@@ -5,6 +5,19 @@ const MODELS_DOC = "https://console.groq.com/docs/models";
 
 export const chatModel = () => process.env.GROQ_CHAT_MODEL?.trim() || "openai/gpt-oss-120b";
 export const sttModel = () => process.env.GROQ_STT_MODEL?.trim() || "whisper-large-v3-turbo";
+/**
+ * Spoken language for Whisper (ISO-639-1). Defaults to English: auto-detection
+ * misfires on short clips (e.g. "Can you hear me?" came back as Icelandic).
+ * Set GROQ_STT_LANGUAGE=auto to let Whisper detect it.
+ */
+export const sttLanguage = () => {
+  const value = process.env.GROQ_STT_LANGUAGE?.trim().toLowerCase();
+  if (value === "auto") return null;
+  return value || "en";
+};
+
+/** How long we're willing to wait in total for Groq rate limits within one request. */
+const DEFAULT_RATE_LIMIT_BUDGET_MS = 25_000;
 
 /** Error with a message that is safe (and friendly) to show and speak to the user. */
 export class GroqError extends Error {
@@ -51,12 +64,13 @@ async function toGroqError(response: Response, model: string, envVar: string): P
     return new GroqError(502, "The AI model needs updating in the app settings.", message);
   }
   if (response.status === 429) {
-    const retry = Number(response.headers.get("retry-after"));
+    // Log Groq's exact wording so the Vercel logs show which limit was hit (tokens/requests per minute/day).
+    console.warn(`[groq] Rate limited (${model}): ${message}`);
     return new GroqError(
       429,
       "The assistant is busy right now. Please try again in a moment.",
       message,
-      Number.isFinite(retry) && retry > 0 ? Math.ceil(retry) : undefined,
+      retryAfterSeconds(response.headers.get("retry-after"), message),
     );
   }
   if (response.status === 401 || response.status === 403) {
@@ -70,21 +84,55 @@ async function toGroqError(response: Response, model: string, envVar: string): P
   return new GroqError(502, "The assistant had a problem. Please try again.", message);
 }
 
-async function groqFetch(path: string, init: RequestInit, model: string, envVar: string): Promise<Response> {
-  let response: Response;
-  try {
-    response = await fetch(`${GROQ_BASE_URL}${path}`, {
-      ...init,
-      headers: { Authorization: `Bearer ${apiKey()}`, ...init.headers },
-      signal: AbortSignal.timeout(45_000),
-    });
-  } catch (error) {
-    if (error instanceof GroqError) throw error;
-    console.error("[groq] Network error:", error);
-    throw new GroqError(504, "I couldn't reach the assistant. Please try again.", String(error));
+/**
+ * Seconds to wait before retrying, from the Retry-After header or Groq's message
+ * ("Please try again in 2.86s" / "in 1m3.5s").
+ */
+export function retryAfterSeconds(header: string | null, message: string): number | undefined {
+  const fromHeader = Number(header);
+  if (header && Number.isFinite(fromHeader) && fromHeader > 0) return fromHeader;
+  const match = /try again in (?:(\d+)m)?([\d.]+)(ms|s)/i.exec(message);
+  if (!match) return undefined;
+  const minutes = Number(match[1] ?? 0);
+  const value = Number(match[2]);
+  const seconds = minutes * 60 + (match[3].toLowerCase() === "ms" ? value / 1000 : value);
+  return seconds > 0 ? seconds : undefined;
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Absolute time (ms since epoch) after which we stop waiting out rate limits. */
+export type Deadline = number;
+
+async function groqFetch(
+  path: string,
+  init: RequestInit,
+  model: string,
+  envVar: string,
+  deadline: Deadline = Date.now() + DEFAULT_RATE_LIMIT_BUDGET_MS,
+): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    let response: Response;
+    try {
+      response = await fetch(`${GROQ_BASE_URL}${path}`, {
+        ...init,
+        headers: { Authorization: `Bearer ${apiKey()}`, ...init.headers },
+        signal: AbortSignal.timeout(45_000),
+      });
+    } catch (error) {
+      if (error instanceof GroqError) throw error;
+      console.error("[groq] Network error:", error);
+      throw new GroqError(504, "I couldn't reach the assistant. Please try again.", String(error));
+    }
+    if (response.ok) return response;
+
+    const error = await toGroqError(response, model, envVar);
+    // Free-tier limits are per minute: wait it out if Groq says how long and it fits the budget.
+    const waitMs = error.status === 429 && error.retryAfterSeconds ? error.retryAfterSeconds * 1000 + 250 : null;
+    if (waitMs === null || attempt >= 3 || Date.now() + waitMs > deadline) throw error;
+    console.warn(`[groq] Waiting ${(waitMs / 1000).toFixed(1)}s before retrying (attempt ${attempt + 2}).`);
+    await sleep(waitMs);
   }
-  if (!response.ok) throw await toGroqError(response, model, envVar);
-  return response;
 }
 
 interface VerboseTranscription {
@@ -100,6 +148,8 @@ export async function transcribe(audio: Blob, filename: string): Promise<string>
   form.append("model", model);
   form.append("response_format", "verbose_json");
   form.append("temperature", "0");
+  const language = sttLanguage();
+  if (language) form.append("language", language);
 
   const response = await groqFetch("/audio/transcriptions", { method: "POST", body: form }, model, "GROQ_STT_MODEL");
   const result = (await response.json()) as VerboseTranscription;
@@ -131,6 +181,8 @@ export interface CompletionMessage {
 export async function chatCompletion(body: {
   messages: unknown[];
   tools: unknown[];
+  /** Stop waiting out rate limits after this time. */
+  deadline?: Deadline;
 }): Promise<{ message: CompletionMessage; finishReason: string }> {
   const model = chatModel();
   const payload: Record<string, unknown> = {
@@ -139,15 +191,18 @@ export async function chatCompletion(body: {
     tools: body.tools,
     tool_choice: "auto",
     temperature: 0.2,
-    max_completion_tokens: 2048,
+    // Kept small: the free tier allows ~8K tokens per minute across all steps of a request.
+    max_completion_tokens: 1024,
+    parallel_tool_calls: true,
   };
-  if (model.startsWith("openai/gpt-oss")) payload.reasoning_effort = "medium";
+  if (model.startsWith("openai/gpt-oss")) payload.reasoning_effort = "low";
 
   const response = await groqFetch(
     "/chat/completions",
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) },
     model,
     "GROQ_CHAT_MODEL",
+    body.deadline,
   );
   const data = (await response.json()) as {
     choices: { message: CompletionMessage; finish_reason: string }[];

@@ -157,7 +157,7 @@ export interface ToolContext {
 
 class ToolInputError extends Error {}
 
-async function labels(ctx: ToolContext) {
+export async function labels(ctx: ToolContext) {
   ctx.labels ??= {
     statuses: await listLabels("statuses"),
     priorities: await listLabels("priorities"),

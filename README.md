@@ -235,6 +235,7 @@ All of them are server-only; none are sent to the browser.
 | `GROQ_API_KEY` | for voice | Groq API key from [console.groq.com](https://console.groq.com/keys). |
 | `GROQ_CHAT_MODEL` | no | Chat model with tool calling. Default `openai/gpt-oss-120b`. |
 | `GROQ_STT_MODEL` | no | Speech-to-text model. Default `whisper-large-v3-turbo`. |
+| `GROQ_STT_LANGUAGE` | no | Language you speak, as an ISO code (`en`, `de`, …). Default `en`. `auto` lets Whisper guess, which often misfires on short phrases. |
 | `CRON_SECRET` | recommended | Random string. Authorizes the daily keep-alive job (see below). Without it the job is disabled. |
 
 Groq retires models from time to time. When a model ID stops working, the
@@ -397,8 +398,16 @@ don't share memory.
   update `GROQ_CHAT_MODEL` (or `GROQ_STT_MODEL`). The chat model must support
   tool calling. Then redeploy.
 
-**Assistant says it's busy**
-- You've hit the Groq free tier's rate limit. Wait a moment and try again.
+**Assistant says it's busy, or "hit the AI's rate limit"**
+- The Groq free tier allows about 8,000 tokens per minute for the chat model
+  (see **console.groq.com → Settings → Limits**), and a request that makes
+  many changes uses several model calls.
+- The server already waits and retries automatically (up to about 25 s).
+- If a request still stops partway, the reply says what was done. Say
+  "continue" a minute later and the assistant finishes the rest without
+  repeating anything.
+- The Vercel function logs show Groq's exact message (`[groq] Rate limited …`),
+  including which limit was hit.
 
 **Microphone blocked**
 - iOS: **Settings → Apps → Safari → Microphone**, or the **aA** menu →

@@ -10,7 +10,10 @@ const mocks = vi.hoisted(() => ({
   listLabels: vi.fn(),
 }));
 
-vi.mock("./groq", () => ({ chatCompletion: mocks.chatCompletion }));
+vi.mock("./groq", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./groq")>()),
+  chatCompletion: mocks.chatCompletion,
+}));
 vi.mock("@/lib/server/tasks", () => ({
   createTask: mocks.createTask,
   deleteTask: mocks.deleteTask,
@@ -23,6 +26,7 @@ vi.mock("@/lib/server/tasks", () => ({
 vi.mock("@/lib/server/labels", () => ({ listLabels: mocks.listLabels }));
 
 const { runAssistant } = await import("./assistant");
+const { GroqError } = await import("./groq");
 
 const A = "00000000-0000-4000-8000-00000000000a";
 const B = "00000000-0000-4000-8000-00000000000b";
@@ -154,5 +158,45 @@ describe("delete confirmation guard", () => {
     ];
     await runAssistant("yes", history);
     expect(mocks.deleteTask).toHaveBeenCalledWith(A);
+  });
+});
+
+describe("rate limits", () => {
+  const rateLimited = () => new GroqError(429, "busy", "Rate limit reached: tokens per minute", 30);
+
+  it("keeps and reports partial progress when rate-limited midway", async () => {
+    mocks.createTask
+      .mockResolvedValueOnce(task(A, "Finish portfolio website"))
+      .mockResolvedValueOnce(task(B, "Report to client"));
+    mocks.chatCompletion
+      .mockResolvedValueOnce(
+        toolStep(
+          call("c1", "create_task", { date: "2026-10-12", title: "Finish portfolio website" }),
+          call("c2", "create_task", { date: "2026-10-12", title: "Report to client" }),
+        ),
+      )
+      .mockRejectedValueOnce(rateLimited());
+
+    const result = await runAssistant("portfolio and client report today", []);
+
+    expect(result.partial).toBe(true);
+    expect(result.changes).toHaveLength(2);
+    expect(result.reply).toMatch(/added 2 tasks.*rate limit.*continue/i);
+    // History records the work and ends with a spoken reply, so "continue" picks up from there.
+    expect(result.history.map((m) => m.role)).toEqual(["user", "assistant", "tool", "tool", "assistant"]);
+  });
+
+  it("still fails when nothing was done yet", async () => {
+    mocks.chatCompletion.mockRejectedValueOnce(rateLimited());
+    await expect(runAssistant("hi", [])).rejects.toBeInstanceOf(GroqError);
+  });
+
+  it("gives the model the status and priority names up front", async () => {
+    mocks.chatCompletion.mockResolvedValueOnce(answer("Hi."));
+    await runAssistant("hi", []);
+    const prompt = mocks.chatCompletion.mock.calls[0][0].messages[0].content;
+    expect(prompt).toContain("Statuses (in order; new tasks get the first): To do.");
+    expect(prompt).toContain("Priorities: High.");
+    expect(prompt).toMatch(/put ALL independent tool calls in the same response/);
   });
 });

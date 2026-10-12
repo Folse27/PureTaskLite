@@ -220,6 +220,8 @@ export const useAssistant = create<AssistantState>((set, get) => {
       } catch (error) {
         const message = error instanceof ApiError ? error.message : "Something went wrong. Please try again.";
         set((s) => ({ phase: "idle", turns: s.turns.map((t) => (t.id === id ? { ...t, error: message } : t)) }));
+        // The server may have changed tasks before failing; make sure the tree shows them.
+        void usePlanner.getState().refresh();
         say(
           error instanceof ApiError && error.status === 429
             ? "I'm busy right now. Please try again in a moment."
