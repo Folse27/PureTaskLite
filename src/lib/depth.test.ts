@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAddChild, childDepth, DepthLimitError, MAX_DEPTH, subtreeFits } from "./depth";
+import { canAddChild, childDepth, DepthLimitError, MAX_DEPTH } from "./depth";
 
 describe("sub-note depth limit", () => {
   it("allows three levels below a top-level task", () => {
@@ -16,13 +16,5 @@ describe("sub-note depth limit", () => {
 
   it("hides the add-sub-note control only at max depth", () => {
     expect([0, 1, 2, 3].map(canAddChild)).toEqual([true, true, true, false]);
-  });
-
-  it("checks whether a moved subtree still fits", () => {
-    expect(subtreeFits(0, 3)).toBe(true);
-    expect(subtreeFits(1, 2)).toBe(true);
-    expect(subtreeFits(1, 3)).toBe(false);
-    expect(subtreeFits(3, 0)).toBe(true);
-    expect(subtreeFits(-1, 0)).toBe(false);
   });
 });

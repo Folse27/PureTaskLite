@@ -1,7 +1,6 @@
 import { tz } from "@date-fns/tz";
 import {
   addDays,
-  addWeeks,
   eachDayOfInterval,
   eachWeekOfInterval,
   endOfMonth,
@@ -123,13 +122,6 @@ export function visibleYears(today: ISODate, extraYears = 0): number[] {
   return years;
 }
 
-/** Inclusive date range covered by a year in the tree (from its first Monday to that week's Sunday). */
-export function yearRange(year: number): { from: ISODate; to: ISODate } {
-  const firstWeeks = weeksOfMonth(year, 0);
-  const lastWeeks = weeksOfMonth(year, 11);
-  return { from: firstWeeks[0], to: weekEnd(lastWeeks[lastWeeks.length - 1]) };
-}
-
 /** Human-readable context used in the AI system prompt. */
 export function describeToday(now: Date = new Date()) {
   const today = todayISO(now);
@@ -149,8 +141,3 @@ export function describeToday(now: Date = new Date()) {
 }
 
 export const MAX_EXTRA_YEARS = 50;
-
-/** The week's Monday, `n` weeks after the given Monday. */
-export function shiftWeek(monday: ISODate, n: number): ISODate {
-  return toISODate(addWeeks(fromISODate(monday), n));
-}

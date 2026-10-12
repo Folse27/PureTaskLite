@@ -22,11 +22,3 @@ export function childDepth(parentDepth: number | null | undefined): number {
   if (depth > MAX_DEPTH) throw new DepthLimitError();
   return depth;
 }
-
-/**
- * Whether a subtree whose deepest node is `subtreeHeight` levels below its
- * root can be placed with its root at `newRootDepth`.
- */
-export function subtreeFits(newRootDepth: number, subtreeHeight: number): boolean {
-  return newRootDepth >= 0 && newRootDepth + subtreeHeight <= MAX_DEPTH;
-}

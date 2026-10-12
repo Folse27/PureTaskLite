@@ -17,11 +17,3 @@ export function writeStorage(key: string, value: unknown): void {
     /* ignore */
   }
 }
-
-export function removeStorage(key: string): void {
-  try {
-    window.localStorage.removeItem(key);
-  } catch {
-    /* ignore */
-  }
-}
