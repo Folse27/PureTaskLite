@@ -32,7 +32,8 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Everything except the login endpoint, Next internals and public static assets.
-    "/((?!api/auth/login|_next/static|_next/image|favicon\\.ico|icon\\.svg|apple-icon|manifest\\.webmanifest|robots\\.txt).*)",
+    // Everything except the login endpoint, the cron endpoint (it checks CRON_SECRET itself),
+    // Next internals and public static assets.
+    "/((?!api/auth/login|api/cron/|_next/static|_next/image|favicon\\.ico|icon\\.svg|apple-icon|manifest\\.webmanifest|robots\\.txt).*)",
   ],
 };

@@ -78,6 +78,7 @@ git push -u origin main
    | `GROQ_API_KEY` | your key from step 3 |
    | `GROQ_CHAT_MODEL` | `openai/gpt-oss-120b` |
    | `GROQ_STT_MODEL` | `whisper-large-v3-turbo` |
+   | `CRON_SECRET` | another random string (generate it like `SESSION_SECRET`) |
 
 4. Click **Deploy**. This first build succeeds but logs
    `DATABASE_URL is not set — skipping migrations`, because there is no
@@ -163,6 +164,20 @@ you're in. The default statuses (To do, In progress, Done) and priorities
 **Share → Add to Home Screen** for a full-screen, app-like experience. The
 first time you tap the microphone, allow microphone access.
 
+### Keep the free Supabase project awake
+
+Supabase pauses free projects after about a week without activity. The app
+includes a daily Vercel Cron job (`vercel.json`) that calls
+`/api/cron/keepalive` at 06:00 UTC and makes one tiny database write. Vercel
+sends your `CRON_SECRET` with the call, and the endpoint rejects anything
+without it.
+
+- Make sure `CRON_SECRET` is set (step 4), then redeploy.
+- You can see the job and its runs under **Settings → Cron Jobs** in Vercel.
+  **Run** there triggers it manually.
+- If the project gets paused anyway, open the Supabase dashboard and click
+  **Restore project**.
+
 ### Using Neon instead of Supabase
 
 The code only needs a Postgres connection string, so Neon works too: add
@@ -220,6 +235,7 @@ All of them are server-only; none are sent to the browser.
 | `GROQ_API_KEY` | for voice | Groq API key from [console.groq.com](https://console.groq.com/keys). |
 | `GROQ_CHAT_MODEL` | no | Chat model with tool calling. Default `openai/gpt-oss-120b`. |
 | `GROQ_STT_MODEL` | no | Speech-to-text model. Default `whisper-large-v3-turbo`. |
+| `CRON_SECRET` | recommended | Random string. Authorizes the daily keep-alive job (see below). Without it the job is disabled. |
 
 Groq retires models from time to time. When a model ID stops working, the
 server logs say so — see [Troubleshooting](#troubleshooting).
@@ -393,6 +409,10 @@ don't share memory.
 **No spoken reply**
 - Check the device volume and that the speaker button in the assistant panel
   isn't muted.
+
+**Site says "Can't reach the database" after a quiet week**
+- The free Supabase project was paused. Restore it in the Supabase dashboard,
+  then check that `CRON_SECRET` is set so the keep-alive job runs.
 
 **Locked out of the login page**
 - Wait for the countdown. If you need to clear it right away, run this in the
