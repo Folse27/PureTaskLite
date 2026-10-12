@@ -110,6 +110,7 @@ function AssistantPanel({ today }: { today: string }) {
   const notice = useAssistant((s) => s.notice);
   const interim = useAssistant((s) => s.interim);
   const muted = useAssistant((s) => s.muted);
+  const awaitingConfirm = useAssistant((s) => !!s.pendingDelete && s.phase === "idle");
   const { setOpen, reset, setMuted, send } = useAssistant.getState();
   const phone = useMediaQuery("(max-width: 639px)");
   const reduceMotion = useReducedMotion();
@@ -204,8 +205,13 @@ function AssistantPanel({ today }: { today: string }) {
             “Move the dentist to next Friday”.
           </p>
         )}
-        {turns.map((t) => (
-          <TurnView key={t.id} turn={t} today={today} />
+        {turns.map((t, i) => (
+          <TurnView
+            key={t.id}
+            turn={t}
+            today={today}
+            onConfirm={i === turns.length - 1 && t.asksToConfirm && awaitingConfirm ? (yes) => void send(yes ? "Yes" : "No") : undefined}
+          />
         ))}
         {status && (
           <p className="flex items-center gap-2 text-[14px] text-label-2">
@@ -246,7 +252,16 @@ const CHANGE_VERB: Record<AssistantChange["kind"], string> = {
   deleted: "Deleted",
 };
 
-function TurnView({ turn, today }: { turn: Turn; today: string }) {
+function TurnView({
+  turn,
+  today,
+  onConfirm,
+}: {
+  turn: Turn;
+  today: string;
+  /** Present while this turn's deletion question is still unanswered. */
+  onConfirm?: (yes: boolean) => void;
+}) {
   return (
     <div className="space-y-2">
       <p className="ml-auto w-fit max-w-[85%] rounded-[18px] rounded-br-md bg-accent-fill px-3.5 py-2 text-[15px] leading-snug text-white">
@@ -254,6 +269,24 @@ function TurnView({ turn, today }: { turn: Turn; today: string }) {
       </p>
       {turn.reply && <p className="max-w-[92%] text-[15px] leading-snug">{turn.reply}</p>}
       {turn.error && <p className="max-w-[92%] text-[14px] leading-snug text-danger">{turn.error}</p>}
+      {onConfirm && (
+        <div className="flex gap-2" role="group" aria-label="Confirm deletion">
+          <button
+            type="button"
+            onClick={() => onConfirm(true)}
+            className="pressable min-h-11 flex-1 rounded-full bg-danger-fill px-4 text-[15px] font-semibold text-white"
+          >
+            Delete
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(false)}
+            className="pressable min-h-11 flex-1 rounded-full bg-fill px-4 text-[15px] font-semibold text-label"
+          >
+            Keep
+          </button>
+        </div>
+      )}
       {turn.changes && turn.changes.length > 0 && (
         <ul className="overflow-hidden rounded-xl bg-surface/70 text-[14px]" aria-label="Changes made">
           {turn.changes.map((c, i) => (

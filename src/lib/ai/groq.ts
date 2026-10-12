@@ -166,52 +166,69 @@ export async function transcribe(audio: Blob, filename: string): Promise<string>
   return (result.text ?? "").trim();
 }
 
-export interface ToolCall {
-  id: string;
-  type: "function";
-  function: { name: string; arguments: string };
-}
+export type ChatRole = "system" | "user" | "assistant";
 
-export interface CompletionMessage {
-  role: "assistant";
-  content: string | null;
-  tool_calls?: ToolCall[];
-}
-
-export async function chatCompletion(body: {
-  messages: unknown[];
-  tools: unknown[];
+/**
+ * One chat completion whose answer must be a JSON object matching `schema`.
+ * Uses strict structured outputs; if the configured model doesn't support them,
+ * falls back to plain JSON mode (the caller validates the result either way).
+ */
+export async function chatJson(body: {
+  messages: { role: ChatRole; content: string }[];
+  schema: object;
   /** Stop waiting out rate limits after this time. */
   deadline?: Deadline;
-}): Promise<{ message: CompletionMessage; finishReason: string }> {
+}): Promise<unknown> {
   const model = chatModel();
-  const payload: Record<string, unknown> = {
+  const base: Record<string, unknown> = {
     model,
     messages: body.messages,
-    tools: body.tools,
-    tool_choice: "auto",
     temperature: 0.2,
-    // Kept small: the free tier allows ~8K tokens per minute across all steps of a request.
-    max_completion_tokens: 1024,
-    parallel_tool_calls: true,
+    // Room for a large operations table; the free tier allows ~8K tokens per minute in total.
+    max_completion_tokens: 3000,
   };
-  if (model.startsWith("openai/gpt-oss")) payload.reasoning_effort = "low";
+  if (model.startsWith("openai/gpt-oss")) base.reasoning_effort = "low";
 
-  const response = await groqFetch(
-    "/chat/completions",
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) },
-    model,
-    "GROQ_CHAT_MODEL",
-    body.deadline,
-  );
+  const send = (responseFormat: object) =>
+    groqFetch(
+      "/chat/completions",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...base, response_format: responseFormat }),
+      },
+      model,
+      "GROQ_CHAT_MODEL",
+      body.deadline,
+    );
+
+  let response: Response;
+  try {
+    response = await send({
+      type: "json_schema",
+      json_schema: { name: "planner_response", strict: true, schema: body.schema },
+    });
+  } catch (error) {
+    const unsupported =
+      error instanceof GroqError &&
+      error.status === 502 &&
+      /response_format|json_schema|structured|strict|json_validate_failed|failed to (generate|validate) json/i.test(error.message);
+    if (!unsupported) throw error;
+    console.warn(`[groq] ${model} doesn't support strict structured outputs; using JSON mode instead.`);
+    response = await send({ type: "json_object" });
+  }
+
   const data = (await response.json()) as {
-    choices: { message: CompletionMessage; finish_reason: string }[];
+    choices?: { message?: { content?: string | null }; finish_reason?: string }[];
   };
   const choice = data.choices?.[0];
-  if (!choice) throw new GroqError(502, "The assistant had a problem. Please try again.", "No choices returned");
-  return {
-    // Keep only what we send back in later turns (drops e.g. the reasoning trace).
-    message: { role: "assistant", content: choice.message.content ?? null, tool_calls: choice.message.tool_calls },
-    finishReason: choice.finish_reason,
-  };
+  if (choice?.finish_reason === "length") {
+    throw new GroqError(502, "That was a lot at once. Please split it into smaller requests.", "Output truncated");
+  }
+  try {
+    return JSON.parse(choice?.message?.content ?? "");
+  } catch {
+    console.error("[groq] The model returned invalid JSON:", choice?.message?.content?.slice(0, 500));
+    throw new GroqError(502, "I got confused by that one. Please try again.", "Invalid JSON from model");
+  }
 }

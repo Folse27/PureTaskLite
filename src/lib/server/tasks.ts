@@ -88,36 +88,39 @@ export interface CreateTaskInput {
 
 export async function createTask(input: CreateTaskInput): Promise<Task> {
   await ensureSeeded();
-  return getDb().transaction(async (tx) => {
-    let date = input.date;
-    let depth = 0;
-    const parentId = input.parentId ?? null;
-    if (parentId) {
-      const parent = await getTask(parentId, tx);
-      if (!parent) throw notFound("Parent task");
-      depth = childDepth(parent.depth); // throws DepthLimitError at max depth
-      date = parent.date; // sub-notes always live on their root's day
-    }
-    const statusId = input.statusId === undefined ? await defaultStatusId(tx) : input.statusId;
-    const [row] = await tx
-      .insert(tasks)
-      .values({
-        date,
-        parentId,
-        depth,
-        title: input.title,
-        description: input.description ?? null,
-        statusId,
-        priorityId: input.priorityId ?? null,
-        sortOrder: await nextSortOrder(tx, date, parentId),
-      })
-      .returning();
-    return toTask(row);
-  });
+  return getDb().transaction((tx) => createTaskTx(tx, input));
+}
+
+/** createTask inside an existing transaction (the caller makes sure defaults are seeded). */
+export async function createTaskTx(tx: Transaction, input: CreateTaskInput): Promise<Task> {
+  let date = input.date;
+  let depth = 0;
+  const parentId = input.parentId ?? null;
+  if (parentId) {
+    const parent = await getTask(parentId, tx);
+    if (!parent) throw notFound("Parent task");
+    depth = childDepth(parent.depth); // throws DepthLimitError at max depth
+    date = parent.date; // sub-notes always live on their root's day
+  }
+  const statusId = input.statusId === undefined ? await defaultStatusId(tx) : input.statusId;
+  const [row] = await tx
+    .insert(tasks)
+    .values({
+      date,
+      parentId,
+      depth,
+      title: input.title,
+      description: input.description ?? null,
+      statusId,
+      priorityId: input.priorityId ?? null,
+      sortOrder: await nextSortOrder(tx, date, parentId),
+    })
+    .returning();
+  return toTask(row);
 }
 
 /** Ids of a task and all of its descendants. */
-async function subtreeIds(tx: Transaction, id: string): Promise<string[]> {
+export async function subtreeIds(tx: Transaction, id: string): Promise<string[]> {
   const rows = await tx.execute<{ id: string }>(sql`
     with recursive sub as (
       select id from ${tasks} where id = ${id}
@@ -133,56 +136,59 @@ async function subtreeIds(tx: Transaction, id: string): Promise<string[]> {
  * a sub-note to another day turns it into a top-level task on that day.
  */
 export async function updateTask(id: string, patch: TaskPatch): Promise<{ task: Task; movedIds: string[] }> {
-  return getDb().transaction(async (tx) => {
-    const current = await getTask(id, tx);
-    if (!current) throw notFound();
+  return getDb().transaction((tx) => updateTaskTx(tx, id, patch));
+}
 
-    let movedIds: string[] = [];
-    if (patch.date !== undefined && patch.date !== current.date) {
-      movedIds = await subtreeIds(tx, id);
-      const sortOrder = await nextSortOrder(tx, patch.date, null);
-      // One statement, so the "top-level ⇔ depth 0" check holds for every row.
-      await tx
-        .update(tasks)
-        .set({
-          date: patch.date,
-          depth: sql`${tasks.depth} - ${current.depth}`,
-          parentId: sql`case when ${tasks.id} = ${id} then null else ${tasks.parentId} end`,
-          sortOrder: sql`case when ${tasks.id} = ${id} then ${sortOrder} else ${tasks.sortOrder} end`,
-          updatedAt: new Date(),
-        })
-        .where(inArray(tasks.id, movedIds));
-    }
+export async function updateTaskTx(
+  tx: Transaction,
+  id: string,
+  patch: TaskPatch,
+): Promise<{ task: Task; movedIds: string[] }> {
+  const current = await getTask(id, tx);
+  if (!current) throw notFound();
 
-    const fields: Partial<typeof tasks.$inferInsert> = {};
-    if (patch.title !== undefined) fields.title = patch.title;
-    if (patch.description !== undefined) fields.description = patch.description;
-    if (patch.statusId !== undefined) fields.statusId = patch.statusId;
-    if (patch.priorityId !== undefined) fields.priorityId = patch.priorityId;
-
-    const [row] = await tx
+  let movedIds: string[] = [];
+  if (patch.date !== undefined && patch.date !== current.date) {
+    movedIds = await subtreeIds(tx, id);
+    const sortOrder = await nextSortOrder(tx, patch.date, null);
+    // One statement, so the "top-level ⇔ depth 0" check holds for every row.
+    await tx
       .update(tasks)
-      .set({ ...fields, updatedAt: new Date() })
-      .where(eq(tasks.id, id))
-      .returning();
-    return { task: toTask(row), movedIds };
-  });
+      .set({
+        date: patch.date,
+        depth: sql`${tasks.depth} - ${current.depth}`,
+        parentId: sql`case when ${tasks.id} = ${id} then null else ${tasks.parentId} end`,
+        sortOrder: sql`case when ${tasks.id} = ${id} then ${sortOrder} else ${tasks.sortOrder} end`,
+        updatedAt: new Date(),
+      })
+      .where(inArray(tasks.id, movedIds));
+  }
+
+  const fields: Partial<typeof tasks.$inferInsert> = {};
+  if (patch.title !== undefined) fields.title = patch.title;
+  if (patch.description !== undefined) fields.description = patch.description;
+  if (patch.statusId !== undefined) fields.statusId = patch.statusId;
+  if (patch.priorityId !== undefined) fields.priorityId = patch.priorityId;
+
+  const [row] = await tx
+    .update(tasks)
+    .set({ ...fields, updatedAt: new Date() })
+    .where(eq(tasks.id, id))
+    .returning();
+  return { task: toTask(row), movedIds };
 }
 
 /** Deletes a task and (via ON DELETE CASCADE) all its sub-notes. */
 export async function deleteTask(id: string): Promise<{ task: Task; deletedIds: string[] }> {
-  return getDb().transaction(async (tx) => {
-    const current = await getTask(id, tx);
-    if (!current) throw notFound();
-    const deletedIds = await subtreeIds(tx, id);
-    await tx.delete(tasks).where(eq(tasks.id, id));
-    return { task: toTask(current), deletedIds };
-  });
+  return getDb().transaction((tx) => deleteTaskTx(tx, id));
 }
 
-/** How many tasks a delete would remove (the task plus its descendants). */
-export async function subtreeSize(id: string): Promise<number> {
-  return getDb().transaction(async (tx) => (await subtreeIds(tx, id)).length);
+export async function deleteTaskTx(tx: Transaction, id: string): Promise<{ task: Task; deletedIds: string[] }> {
+  const current = await getTask(id, tx);
+  if (!current) throw notFound();
+  const deletedIds = await subtreeIds(tx, id);
+  await tx.delete(tasks).where(eq(tasks.id, id));
+  return { task: toTask(current), deletedIds };
 }
 
 export async function reorderTasks(date: string, parentId: string | null, orderedIds: string[]): Promise<void> {

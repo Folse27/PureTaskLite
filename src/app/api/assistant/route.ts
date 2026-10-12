@@ -5,11 +5,11 @@ import { parseBody, route } from "@/lib/server/http";
 
 export const maxDuration = 60;
 
-/** POST { text, history } → { reply, changes, history } */
+/** POST { text, history, pendingDelete? } → { reply, changes, history, pendingDelete } */
 export const POST = route(async (request) => {
-  const { text, history } = await parseBody(request, assistantInput);
+  const input = await parseBody(request, assistantInput);
   try {
-    return Response.json(await runAssistant(text, history));
+    return Response.json(await runAssistant(input));
   } catch (error) {
     if (error instanceof GroqError) {
       return Response.json(

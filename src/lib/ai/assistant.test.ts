@@ -1,202 +1,210 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ChatMessage, Task } from "@/lib/types";
+import type { Label } from "@/lib/types";
+import type { KnownTask } from "./plan";
 
 const mocks = vi.hoisted(() => ({
-  chatCompletion: vi.fn(),
-  createTask: vi.fn(),
-  deleteTask: vi.fn(),
-  getTask: vi.fn(),
-  subtreeSize: vi.fn(),
+  chatJson: vi.fn(),
   listLabels: vi.fn(),
+  loadSnapshot: vi.fn(),
+  resolveHandles: vi.fn(),
+  lookupTasks: vi.fn(),
+  executePlan: vi.fn(),
+  deleteConfirmed: vi.fn(),
 }));
 
 vi.mock("./groq", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./groq")>()),
-  chatCompletion: mocks.chatCompletion,
-}));
-vi.mock("@/lib/server/tasks", () => ({
-  createTask: mocks.createTask,
-  deleteTask: mocks.deleteTask,
-  getTask: mocks.getTask,
-  subtreeSize: mocks.subtreeSize,
-  listTasks: vi.fn(async () => []),
-  searchTasks: vi.fn(async () => []),
-  updateTask: vi.fn(),
+  chatJson: mocks.chatJson,
 }));
 vi.mock("@/lib/server/labels", () => ({ listLabels: mocks.listLabels }));
+vi.mock("./store", () => ({
+  loadSnapshot: mocks.loadSnapshot,
+  resolveHandles: mocks.resolveHandles,
+  lookupTasks: mocks.lookupTasks,
+  executePlan: mocks.executePlan,
+  deleteConfirmed: mocks.deleteConfirmed,
+}));
 
 const { runAssistant } = await import("./assistant");
 const { GroqError } = await import("./groq");
 
-const A = "00000000-0000-4000-8000-00000000000a";
-const B = "00000000-0000-4000-8000-00000000000b";
+const statuses: Label[] = [{ id: "s1", name: "To do", color: "#8E8E93", sortOrder: 0 }];
+const priorities: Label[] = [{ id: "p1", name: "High", color: "#FF9500", sortOrder: 0 }];
 
-function task(id: string, title: string): Task {
-  return {
-    id,
-    title,
-    date: "2026-10-12",
-    parentId: null,
-    depth: 0,
-    description: null,
-    statusId: null,
-    priorityId: null,
-    sortOrder: 0,
-    createdAt: "2026-10-12T00:00:00Z",
-    updatedAt: "2026-10-12T00:00:00Z",
-  };
-}
-
-const call = (id: string, name: string, args: object) => ({
-  id,
-  type: "function" as const,
-  function: { name, arguments: JSON.stringify(args) },
+const NULLS = { ref: null, id: null, parent: null, date: null, title: null, description: null, status: null, priority: null };
+const NO_LOOKUP = { query: null, from: null, to: null };
+const answer = (reply: string, operations: object[] = [], lookup: object = NO_LOOKUP) => ({
+  reply,
+  operations: operations.map((o) => ({ ...NULLS, ...o })),
+  lookup,
 });
-const toolStep = (...calls: ReturnType<typeof call>[]) => ({
-  message: { role: "assistant", content: null, tool_calls: calls },
-  finishReason: "tool_calls",
-});
-const answer = (content: string) => ({ message: { role: "assistant", content }, finishReason: "stop" });
 
-const toolResults = (history: ChatMessage[]) =>
-  history.filter((m): m is Extract<ChatMessage, { role: "tool" }> => m.role === "tool").map((m) => JSON.parse(m.content));
+const UUID_A = "aaaaaaaa-0000-4000-8000-000000000001";
+const UUID_B = "bbbbbbbb-0000-4000-8000-000000000002";
+const knownA: KnownTask = { id: UUID_A, title: "Portfolio", date: "2026-10-12", depth: 0, subtreeIds: [UUID_A, "c1", "c2"] };
+const knownB: KnownTask = { id: UUID_B, title: "Gym", date: "2026-10-13", depth: 0, subtreeIds: [UUID_B] };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.listLabels.mockImplementation(async (kind: string) =>
-    kind === "statuses"
-      ? [{ id: "s1", name: "To do", color: "#8E8E93", sortOrder: 0 }]
-      : [{ id: "p1", name: "High", color: "#FF9500", sortOrder: 0 }],
+  mocks.listLabels.mockImplementation(async (kind: string) => (kind === "statuses" ? statuses : priorities));
+  mocks.loadSnapshot.mockResolvedValue("SNAPSHOT");
+  mocks.resolveHandles.mockImplementation(async (handles: string[]) => {
+    const all = new Map([
+      ["aaaaaa", knownA],
+      ["bbbbbb", knownB],
+    ]);
+    return new Map(handles.filter((h) => all.has(h)).map((h) => [h, all.get(h)!]));
+  });
+  mocks.executePlan.mockImplementation(async (plan: { creates: { title: string; date: string | null }[] }) =>
+    plan.creates.map((c, i) => ({ kind: "created", taskId: `${i}0000000-new`, title: c.title, date: c.date ?? "2026-10-12" })),
   );
-  mocks.getTask.mockImplementation(async (id: string) => task(id, id === A ? "Dentist" : "Gym"));
-  mocks.subtreeSize.mockResolvedValue(1);
-  mocks.deleteTask.mockImplementation(async (id: string) => ({ task: task(id, "x"), deletedIds: [id] }));
 });
 
-describe("runAssistant tool loop", () => {
-  it("executes tool calls until the model answers, and reports changes", async () => {
-    mocks.createTask.mockResolvedValue({ ...task(A, "Buy milk"), date: "2026-10-13", priorityId: "p1" });
-    mocks.chatCompletion
-      .mockResolvedValueOnce(toolStep(call("c1", "create_task", { date: "2026-10-13", title: "Buy milk", priority: "high" })))
-      .mockResolvedValueOnce(answer("Added buy milk for tomorrow."));
-
-    const result = await runAssistant("Add buy milk tomorrow, high priority", []);
-
-    expect(mocks.createTask).toHaveBeenCalledWith(
-      expect.objectContaining({ date: "2026-10-13", title: "Buy milk", priorityId: "p1" }),
+describe("runAssistant", () => {
+  it("handles a multi-task request with exactly one model call", async () => {
+    mocks.chatJson.mockResolvedValueOnce(
+      answer("Added your portfolio task with a sub-note, and homework help through Friday.", [
+        { op: "create", ref: "p", date: "2026-10-12", title: "Finish portfolio website" },
+        { op: "create", parent: "p", title: "Create thumbnails" },
+        ...["12", "13", "14", "15", "16"].map((d) => ({ op: "create", date: `2026-10-${d}`, title: "Help friend with homework" })),
+      ]),
     );
-    expect(result.reply).toBe("Added buy milk for tomorrow.");
-    expect(result.changes).toEqual([{ kind: "created", taskId: A, title: "Buy milk", date: "2026-10-13" }]);
-    expect(result.history.map((m) => m.role)).toEqual(["user", "assistant", "tool", "assistant"]);
-    // The system prompt carries today's date and is sent on every step.
-    const firstRequest = mocks.chatCompletion.mock.calls[0][0];
-    expect(firstRequest.messages[0].role).toBe("system");
-    expect(firstRequest.messages[0].content).toContain("Europe/Berlin");
+
+    const result = await runAssistant({ text: "portfolio, thumbnails, homework all week", history: [] });
+
+    expect(mocks.chatJson).toHaveBeenCalledTimes(1);
+    expect(mocks.executePlan).toHaveBeenCalledTimes(1);
+    const [plan, options] = mocks.executePlan.mock.calls[0];
+    expect(plan.creates).toHaveLength(7);
+    expect(options).toEqual({ skipDeletes: false });
+    expect(result.reply).toBe("Added your portfolio task with a sub-note, and homework help through Friday.");
+    expect(result.changes).toHaveLength(7);
+    expect(result.pendingDelete).toBeNull();
+
+    // The prompt carries the snapshot; the history records what was done (with handles) for follow-ups.
+    const messages = mocks.chatJson.mock.calls[0][0].messages;
+    expect(messages[0].content).toContain("SNAPSHOT");
+    expect(messages.at(-1)).toEqual({ role: "user", content: "portfolio, thumbnails, homework all week" });
+    expect(result.history).toHaveLength(2);
+    expect(result.history[1].content).toMatch(/\[added 000000 "Finish portfolio website" on 2026-10-12;/);
   });
 
-  it("returns tool errors to the model instead of failing", async () => {
-    mocks.chatCompletion
-      .mockResolvedValueOnce(toolStep(call("c1", "create_task", { date: "2026-10-13", title: "X", status: "Blocked" })))
-      .mockResolvedValueOnce(answer("There is no Blocked status."));
-    const result = await runAssistant("add X as blocked", []);
-    expect(mocks.createTask).not.toHaveBeenCalled();
-    expect(toolResults(result.history)[0].error).toMatch(/Unknown status "Blocked". Available: To do/);
+  it("answers questions with an empty operations table", async () => {
+    mocks.chatJson.mockResolvedValueOnce(answer("You have two tasks today."));
+    const result = await runAssistant({ text: "what's on today?", history: [] });
+    expect(result.reply).toBe("You have two tasks today.");
+    expect(mocks.executePlan).toHaveBeenCalledWith(expect.objectContaining({ creates: [], deletes: [] }), {
+      skipDeletes: false,
+    });
   });
 
-  it("stops after a bounded number of steps", async () => {
-    mocks.chatCompletion.mockResolvedValue(toolStep(call("c", "list_statuses", {})));
-    const result = await runAssistant("loop forever", []);
-    expect(mocks.chatCompletion).toHaveBeenCalledTimes(10);
-    expect(result.reply).toMatch(/couldn't work that out/);
-  });
-});
+  it("does a second call only when the model asks for a lookup", async () => {
+    mocks.lookupTasks.mockResolvedValueOnce("LOOKUP-RESULTS");
+    mocks.chatJson
+      .mockResolvedValueOnce(answer("", [], { query: "dentist", from: null, to: null }))
+      .mockResolvedValueOnce(answer("Moved the dentist to Friday.", [{ op: "update", id: "bbbbbb", date: "2026-10-16" }]));
 
-describe("delete confirmation guard", () => {
-  it("deletes a single task without sub-notes directly", async () => {
-    mocks.chatCompletion
-      .mockResolvedValueOnce(toolStep(call("d1", "delete_task", { id: A })))
-      .mockResolvedValueOnce(answer("Deleted the dentist."));
-    const result = await runAssistant("delete the dentist", []);
-    expect(mocks.deleteTask).toHaveBeenCalledWith(A);
-    expect(result.changes[0]).toMatchObject({ kind: "deleted", taskId: A });
-  });
+    const result = await runAssistant({ text: "move the dentist in March to Friday", history: [] });
 
-  it("refuses several deletes in one turn without confirmation", async () => {
-    mocks.chatCompletion
-      .mockResolvedValueOnce(toolStep(call("d1", "delete_task", { id: A }), call("d2", "delete_task", { id: B })))
-      .mockResolvedValueOnce(answer("Should I delete Dentist and Gym?"));
-    const result = await runAssistant("delete everything today", []);
-    expect(mocks.deleteTask).not.toHaveBeenCalled();
-    expect(toolResults(result.history).every((r) => r.error === "confirmation_required")).toBe(true);
-    expect(result.changes).toEqual([]);
+    expect(mocks.lookupTasks).toHaveBeenCalledWith({ query: "dentist", from: undefined, to: undefined }, expect.any(String), {
+      statuses,
+      priorities,
+    });
+    expect(mocks.chatJson).toHaveBeenCalledTimes(2);
+    expect(mocks.chatJson.mock.calls[1][0].messages.at(-1).content).toContain("LOOKUP-RESULTS");
+    expect(result.reply).toBe("Moved the dentist to Friday.");
   });
 
-  it("refuses a second sequential delete in the same turn", async () => {
-    mocks.chatCompletion
-      .mockResolvedValueOnce(toolStep(call("d1", "delete_task", { id: A })))
-      .mockResolvedValueOnce(toolStep(call("d2", "delete_task", { id: B })))
-      .mockResolvedValueOnce(answer("Deleted one; confirm the other?"));
-    await runAssistant("delete both", []);
-    expect(mocks.deleteTask).toHaveBeenCalledTimes(1);
+  it("deletes a single task right away", async () => {
+    mocks.chatJson.mockResolvedValueOnce(answer("Deleted the gym session.", [{ op: "delete", id: "bbbbbb" }]));
+    const result = await runAssistant({ text: "delete gym", history: [] });
+    expect(mocks.executePlan.mock.calls[0][1]).toEqual({ skipDeletes: false });
+    expect(result.pendingDelete).toBeNull();
   });
 
-  it("refuses deleting a task with sub-notes unless confirmed after asking", async () => {
-    mocks.subtreeSize.mockResolvedValue(3);
-    mocks.chatCompletion
-      .mockResolvedValueOnce(toolStep(call("d1", "delete_task", { id: A, confirmed: true })))
-      .mockResolvedValueOnce(answer("It has 2 sub-notes. Delete all 3?"));
-    // No earlier assistant reply → a self-asserted confirmation is not trusted.
-    await runAssistant("delete the dentist", []);
-    expect(mocks.deleteTask).not.toHaveBeenCalled();
+  it("holds multi-task deletes for confirmation, applying the rest", async () => {
+    mocks.chatJson.mockResolvedValueOnce(
+      answer("Done!", [
+        { op: "delete", id: "aaaaaa" },
+        { op: "create", date: "2026-10-12", title: "New thing" },
+      ]),
+    );
+    const result = await runAssistant({ text: "delete the portfolio and add a new thing", history: [] });
 
-    mocks.chatCompletion
-      .mockResolvedValueOnce(toolStep(call("d2", "delete_task", { id: A, confirmed: true })))
-      .mockResolvedValueOnce(answer("Done, deleted 3 tasks."));
-    const history: ChatMessage[] = [
-      { role: "user", content: "delete the dentist" },
-      { role: "assistant", content: "It has 2 sub-notes. Delete all 3?" },
-    ];
-    await runAssistant("yes", history);
-    expect(mocks.deleteTask).toHaveBeenCalledWith(A);
-  });
-});
-
-describe("rate limits", () => {
-  const rateLimited = () => new GroqError(429, "busy", "Rate limit reached: tokens per minute", 30);
-
-  it("keeps and reports partial progress when rate-limited midway", async () => {
-    mocks.createTask
-      .mockResolvedValueOnce(task(A, "Finish portfolio website"))
-      .mockResolvedValueOnce(task(B, "Report to client"));
-    mocks.chatCompletion
-      .mockResolvedValueOnce(
-        toolStep(
-          call("c1", "create_task", { date: "2026-10-12", title: "Finish portfolio website" }),
-          call("c2", "create_task", { date: "2026-10-12", title: "Report to client" }),
-        ),
-      )
-      .mockRejectedValueOnce(rateLimited());
-
-    const result = await runAssistant("portfolio and client report today", []);
-
-    expect(result.partial).toBe(true);
-    expect(result.changes).toHaveLength(2);
-    expect(result.reply).toMatch(/added 2 tasks.*rate limit.*continue/i);
-    // History records the work and ends with a spoken reply, so "continue" picks up from there.
-    expect(result.history.map((m) => m.role)).toEqual(["user", "assistant", "tool", "tool", "assistant"]);
+    expect(mocks.executePlan.mock.calls[0][1]).toEqual({ skipDeletes: true });
+    expect(result.pendingDelete).toEqual({ ids: [UUID_A], titles: ["Portfolio"], total: 3 });
+    expect(result.reply).toBe(
+      "I added 1 task. Should I delete “Portfolio”? That's 3 tasks, including 2 sub-notes. Say yes to confirm.",
+    );
+    expect(result.history[1].content).toContain("waiting for confirmation to delete aaaaaa");
   });
 
-  it("still fails when nothing was done yet", async () => {
-    mocks.chatCompletion.mockRejectedValueOnce(rateLimited());
-    await expect(runAssistant("hi", [])).rejects.toBeInstanceOf(GroqError);
+  it("confirms held deletes on 'yes' without calling the model", async () => {
+    mocks.deleteConfirmed.mockResolvedValueOnce([
+      { kind: "deleted", taskId: UUID_A, title: "Portfolio", date: "2026-10-12", count: 3 },
+    ]);
+    const pendingDelete = { ids: [UUID_A], titles: ["Portfolio"], total: 3 };
+    const result = await runAssistant({ text: "Yes, please.", history: [], pendingDelete });
+
+    expect(mocks.chatJson).not.toHaveBeenCalled();
+    expect(mocks.deleteConfirmed).toHaveBeenCalledWith([UUID_A]);
+    expect(result.reply).toBe("Done, I deleted 3 tasks.");
+    expect(result.pendingDelete).toBeNull();
   });
 
-  it("gives the model the status and priority names up front", async () => {
-    mocks.chatCompletion.mockResolvedValueOnce(answer("Hi."));
-    await runAssistant("hi", []);
-    const prompt = mocks.chatCompletion.mock.calls[0][0].messages[0].content;
-    expect(prompt).toContain("Statuses (in order; new tasks get the first): To do.");
-    expect(prompt).toContain("Priorities: High.");
-    expect(prompt).toMatch(/put ALL independent tool calls in the same response/);
+  it("cancels held deletes on 'no'", async () => {
+    const result = await runAssistant({
+      text: "No, keep them",
+      history: [],
+      pendingDelete: { ids: [UUID_A], titles: ["Portfolio"], total: 3 },
+    });
+    expect(mocks.chatJson).not.toHaveBeenCalled();
+    expect(mocks.deleteConfirmed).not.toHaveBeenCalled();
+    expect(result.reply).toBe("Okay, I won't delete anything.");
+  });
+
+  it("treats anything else as a new request and drops the held deletes", async () => {
+    mocks.chatJson.mockResolvedValueOnce(answer("Added milk."));
+    const result = await runAssistant({
+      text: "add milk tomorrow",
+      history: [],
+      pendingDelete: { ids: [UUID_A], titles: ["Portfolio"], total: 3 },
+    });
+    expect(mocks.chatJson).toHaveBeenCalledTimes(1);
+    expect(mocks.deleteConfirmed).not.toHaveBeenCalled();
+    expect(result.pendingDelete).toBeNull();
+  });
+
+  it("tells the user what failed instead of trusting the model's reply", async () => {
+    mocks.chatJson.mockResolvedValueOnce(
+      answer("All set!", [
+        { op: "create", date: "2026-10-12", title: "Works" },
+        { op: "update", id: "ffffff", title: "Ghost" },
+      ]),
+    );
+    const result = await runAssistant({ text: "…", history: [] });
+    expect(result.reply).toBe("I added 1 task. But I couldn't find the task to rename to “Ghost”.");
+  });
+
+  it("reports a failed save as 'nothing was changed'", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.chatJson.mockResolvedValueOnce(answer("Added.", [{ op: "create", date: "2026-10-12", title: "X" }]));
+    mocks.executePlan.mockRejectedValueOnce(new Error("db down"));
+    await expect(runAssistant({ text: "add x", history: [] })).rejects.toMatchObject({
+      status: 500,
+      message: expect.stringMatching(/nothing was changed/),
+    });
+  });
+
+  it("passes Groq errors (e.g. rate limits) through untouched", async () => {
+    mocks.chatJson.mockRejectedValueOnce(new GroqError(429, "busy", "tokens per minute"));
+    await expect(runAssistant({ text: "hi", history: [] })).rejects.toBeInstanceOf(GroqError);
+    expect(mocks.executePlan).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed model output", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.chatJson.mockResolvedValueOnce({ reply: 5, operations: "lots" });
+    await expect(runAssistant({ text: "hi", history: [] })).rejects.toMatchObject({ status: 502 });
   });
 });

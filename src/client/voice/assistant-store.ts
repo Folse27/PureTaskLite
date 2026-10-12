@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { AssistantChange, ChatMessage } from "@/lib/types";
+import type { AssistantChange, ChatMessage, PendingDelete } from "@/lib/types";
 import { api, ApiError } from "../api";
 import { usePlanner } from "../planner-store";
 import { canRecognize, canRecord, MAX_RECORDING_MS, MicError, recognizeSpeech, Recorder } from "./recorder";
@@ -15,6 +15,8 @@ export interface Turn {
   reply?: string;
   changes?: AssistantChange[];
   error?: string;
+  /** The reply asks to confirm deletions (shows Delete / Keep buttons while still pending). */
+  asksToConfirm?: boolean;
 }
 
 interface AssistantState {
@@ -26,6 +28,8 @@ interface AssistantState {
   interim: string;
   turns: Turn[];
   history: ChatMessage[];
+  /** Deletions the server is holding until the user says yes. */
+  pendingDelete: PendingDelete | null;
   /** Friendly status/error line shown above the input. */
   notice: string | null;
   /** Use the Web Speech API for the next capture (after a failed upload). */
@@ -39,25 +43,32 @@ interface AssistantState {
   setMuted: (muted: boolean) => void;
 }
 
-const SESSION_KEY = "ptl-assistant-v1";
+const SESSION_KEY = "ptl-assistant-v2";
 const MUTED_KEY = "ptl-assistant-muted";
 const recorder = new Recorder();
 let recognition: { stop: () => void } | null = null;
 let autoStop: ReturnType<typeof setTimeout> | undefined;
 let turnId = 0;
 
-function loadSession(): Pick<AssistantState, "turns" | "history"> {
+type Session = Pick<AssistantState, "turns" | "history" | "pendingDelete">;
+
+function loadSession(): Session {
   try {
     const raw = sessionStorage.getItem(SESSION_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as Pick<AssistantState, "turns" | "history">;
-      turnId = parsed.turns.reduce((m, t) => Math.max(m, t.id), 0);
-      return parsed;
+      const parsed = JSON.parse(raw) as Partial<Session>;
+      const turns = Array.isArray(parsed.turns) ? parsed.turns : [];
+      turnId = turns.reduce((m, t) => Math.max(m, t.id), 0);
+      return {
+        turns,
+        history: Array.isArray(parsed.history) ? parsed.history : [],
+        pendingDelete: parsed.pendingDelete ?? null,
+      };
     }
   } catch {
     /* ignore */
   }
-  return { turns: [], history: [] };
+  return { turns: [], history: [], pendingDelete: null };
 }
 
 function loadMuted(): boolean {
@@ -157,6 +168,7 @@ export const useAssistant = create<AssistantState>((set, get) => {
     interim: "",
     turns: [],
     history: [],
+    pendingDelete: null,
     notice: null,
     useFallback: false,
     muted: false,
@@ -205,23 +217,32 @@ export const useAssistant = create<AssistantState>((set, get) => {
       const id = ++turnId;
       set((s) => ({ phase: "thinking", notice: null, open: true, turns: [...s.turns, { id, said }] }));
       try {
-        const result = await api<{ reply: string; changes: AssistantChange[]; history: ChatMessage[] }>(
-          "/api/assistant",
-          { body: { text: said, history: get().history } },
-        );
+        const result = await api<{
+          reply: string;
+          changes: AssistantChange[];
+          history: ChatMessage[];
+          pendingDelete: PendingDelete | null;
+        }>("/api/assistant", {
+          body: { text: said, history: get().history, pendingDelete: get().pendingDelete },
+        });
         set((s) => ({
           phase: "idle",
           history: result.history,
-          turns: s.turns.map((t) => (t.id === id ? { ...t, reply: result.reply, changes: result.changes } : t)),
+          pendingDelete: result.pendingDelete,
+          turns: s.turns.map((t) =>
+            t.id === id
+              ? { ...t, reply: result.reply, changes: result.changes, asksToConfirm: !!result.pendingDelete }
+              : t,
+          ),
         }));
         say(result.reply);
         // Show the AI's changes in the tree right away.
         if (result.changes.length > 0) void usePlanner.getState().refresh();
       } catch (error) {
         const message = error instanceof ApiError ? error.message : "Something went wrong. Please try again.";
+        // Nothing was changed (the server applies all changes in one transaction); any held
+        // deletes stay pending so "yes" can be retried.
         set((s) => ({ phase: "idle", turns: s.turns.map((t) => (t.id === id ? { ...t, error: message } : t)) }));
-        // The server may have changed tasks before failing; make sure the tree shows them.
-        void usePlanner.getState().refresh();
         say(
           error instanceof ApiError && error.status === 429
             ? "I'm busy right now. Please try again in a moment."
@@ -232,7 +253,7 @@ export const useAssistant = create<AssistantState>((set, get) => {
 
     reset: () => {
       stopSpeaking();
-      set({ turns: [], history: [], notice: null });
+      set({ turns: [], history: [], pendingDelete: null, notice: null });
     },
 
     setMuted: (muted) => {
@@ -251,9 +272,10 @@ export const useAssistant = create<AssistantState>((set, get) => {
 export function hydrateAssistant(): () => void {
   useAssistant.setState({ ...loadSession(), muted: loadMuted() });
   return useAssistant.subscribe((s, prev) => {
-    if (s.turns === prev.turns && s.history === prev.history) return;
+    if (s.turns === prev.turns && s.history === prev.history && s.pendingDelete === prev.pendingDelete) return;
     try {
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ turns: s.turns.slice(-30), history: s.history }));
+      const session: Session = { turns: s.turns.slice(-30), history: s.history, pendingDelete: s.pendingDelete };
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
     } catch {
       /* ignore */
     }

@@ -6,7 +6,7 @@ statuses and priorities, and a voice assistant that can read and change your
 plan.
 
 - **Stack:** Next.js 16 (App Router) · TypeScript · Tailwind CSS 4 · Drizzle ORM ·
-  Postgres on Supabase · Groq (speech-to-text + chat with tool calling) · Motion
+  Postgres on Supabase · Groq (speech-to-text + chat with structured JSON output) · Motion
 - **Hosting:** Vercel (from a private GitHub repo)
 - **Access:** single password, signed session cookie, Postgres-backed login rate limiting
 
@@ -233,7 +233,7 @@ All of them are server-only; none are sent to the browser.
 | `APP_PASSWORD` | yes | Login password. |
 | `SESSION_SECRET` | yes | ≥ 32 random characters. Signs the session cookie and keys the stored IP hashes. Changing it signs you out everywhere. |
 | `GROQ_API_KEY` | for voice | Groq API key from [console.groq.com](https://console.groq.com/keys). |
-| `GROQ_CHAT_MODEL` | no | Chat model with tool calling. Default `openai/gpt-oss-120b`. |
+| `GROQ_CHAT_MODEL` | no | Chat model. Default `openai/gpt-oss-120b`. Best with a model that supports strict structured outputs (the `openai/gpt-oss-*` models do); others fall back to JSON mode. |
 | `GROQ_STT_MODEL` | no | Speech-to-text model. Default `whisper-large-v3-turbo`. |
 | `GROQ_STT_LANGUAGE` | no | Language you speak, as an ISO code (`en`, `de`, …). Default `en`. `auto` lets Whisper guess, which often misfires on short phrases. |
 | `CRON_SECRET` | recommended | Random string. Authorizes the daily keep-alive job (see below). Without it the job is disabled. |
@@ -305,7 +305,9 @@ the theme quickly.
   - "What's on this week?"
   - "Move that one to tomorrow"
   - "Mark the report as done"
-  - "Delete everything on Sunday" — it asks you to confirm first.
+  - "Delete everything on Sunday" — if more than one task would be deleted,
+    it asks first. Say "yes" (or tap **Delete**) to confirm, "no" (or
+    **Keep**) to cancel.
 - The conversation lasts for the browser tab, so follow-ups work.
 - **New chat** starts over, and the speaker button mutes the spoken replies.
 
@@ -365,14 +367,29 @@ don't share memory.
 - **Transcription:** the audio goes to `/api/transcribe`, which forwards it to
   Groq Whisper. If that fails, the next attempt uses the browser's built-in
   speech recognition (Web Speech API).
-- **Tool loop:** `/api/assistant` runs Groq chat completions with tools —
-  `list_tasks`, `search_tasks`, `create_task`, `update_task`, `delete_task`,
-  `list_priorities`, `list_statuses` — until the model gives a final answer.
-  The system prompt includes today's date, weekday, time zone, and this week's
-  and next week's dates.
-- **Delete guard:** before deleting more than one task, the assistant has to
-  ask you. The server enforces this too: it refuses a multi-task delete unless
-  the assistant asked in an earlier reply and you then confirmed.
+- **One request, one answer:** `/api/assistant` makes a single Groq call. The
+  model gets:
+  - today's date, weekday, time zone and calendar;
+  - your status and priority names;
+  - a compact **task list**. It always includes every task, sub-notes too,
+    from last week, this week and next week. Up to 150 lines in total, it adds
+    top-level tasks from other dates, nearest to today first, without their
+    sub-notes. Each task has a 6-character handle.
+- **The answer is JSON** (strict structured output): a spoken `reply` plus an
+  `operations` table of creates, updates and deletes. New tasks can be
+  referenced by sub-notes in the same table through temporary refs.
+- **Applying it:** the server validates every operation (dates, handles,
+  label names, the sub-note depth limit) and applies them all in **one
+  database transaction**, so either everything is saved or nothing is. If
+  something can't be done, the spoken reply says exactly what.
+- **Lookups:** if you mention a task that isn't in the list, the model asks
+  for a lookup, and only then is a second call made.
+- **Deleting more than one task** (including sub-notes) is held back. The
+  assistant asks, and your next "yes" or "no" is handled by the server without
+  calling the AI.
+- The code lives in `src/lib/ai/`: `snapshot.ts` builds the task list,
+  `plan.ts` defines the JSON format and validates it, and `store.ts` applies
+  it to the database. All three are unit-tested.
 - **Spoken replies:** the browser's built-in `speechSynthesis`, with a
   natural English voice picked when one is available. On iOS, speech is
   unlocked on your first tap.
@@ -395,17 +412,14 @@ don't share memory.
   `[groq] Model "…" is not available on Groq … Update the GROQ_CHAT_MODEL environment variable…`
 - Pick a current model ID at
   [console.groq.com/docs/models](https://console.groq.com/docs/models) and
-  update `GROQ_CHAT_MODEL` (or `GROQ_STT_MODEL`). The chat model must support
-  tool calling. Then redeploy.
+  update `GROQ_CHAT_MODEL` (or `GROQ_STT_MODEL`), then redeploy.
 
-**Assistant says it's busy, or "hit the AI's rate limit"**
+**Assistant says it's busy**
 - The Groq free tier allows about 8,000 tokens per minute for the chat model
-  (see **console.groq.com → Settings → Limits**), and a request that makes
-  many changes uses several model calls.
+  (see **console.groq.com → Settings → Limits**). A request uses one model call
+  of roughly 2–4K tokens, so a few requests per minute fit.
 - The server already waits and retries automatically (up to about 25 s).
-- If a request still stops partway, the reply says what was done. Say
-  "continue" a minute later and the assistant finishes the rest without
-  repeating anything.
+  Nothing is half-saved: changes are applied all at once, or not at all.
 - The Vercel function logs show Groq's exact message (`[groq] Rate limited …`),
   including which limit was hit.
 

@@ -41,12 +41,16 @@ export interface AssistantChange {
   count?: number;
 }
 
-/** OpenAI-compatible chat message as kept in the client-side session history. */
-export type ChatMessage =
-  | { role: "user"; content: string }
-  | {
-      role: "assistant";
-      content: string | null;
-      tool_calls?: { id: string; type: "function"; function: { name: string; arguments: string } }[];
-    }
-  | { role: "tool"; tool_call_id: string; content: string };
+/** A turn in the assistant conversation, kept by the client for follow-ups. */
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/** Deletions the assistant is holding until the user confirms ("yes"). */
+export interface PendingDelete {
+  ids: string[];
+  titles: string[];
+  /** Tasks that will be removed, including sub-notes. */
+  total: number;
+}

@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { chatCompletion, GroqError, retryAfterSeconds, transcribe } from "./groq";
+import { chatJson, GroqError, retryAfterSeconds, transcribe } from "./groq";
 
 const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
 const limited = (message: string, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify({ error: { message, code: "rate_limit_exceeded" } }), { status: 429, headers });
-const completion = () => ok({ choices: [{ message: { role: "assistant", content: "Hi." }, finish_reason: "stop" }] });
+const completion = (content = '{"reply":"Hi."}', finish_reason = "stop") =>
+  ok({ choices: [{ message: { role: "assistant", content }, finish_reason }] });
+const ask = (deadline?: number) => chatJson({ messages: [{ role: "user", content: "hi" }], schema: { type: "object" }, deadline });
 
 const fetchMock = vi.fn();
 
@@ -32,33 +34,56 @@ describe("retryAfterSeconds", () => {
   });
 });
 
-describe("chatCompletion rate-limit handling", () => {
+describe("chatJson", () => {
+  const sent = (call = 0) => JSON.parse(fetchMock.mock.calls[call][1].body);
+
+  it("asks for strict structured output with low reasoning effort", async () => {
+    fetchMock.mockResolvedValueOnce(completion());
+    expect(await ask()).toEqual({ reply: "Hi." });
+    expect(sent()).toMatchObject({
+      reasoning_effort: "low",
+      response_format: { type: "json_schema", json_schema: { name: "planner_response", strict: true } },
+    });
+    expect(sent()).not.toHaveProperty("tools");
+  });
+
+  it("falls back to JSON mode when the model doesn't support strict outputs", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { message: "response_format json_schema is not supported by this model" } }), {
+          status: 400,
+        }),
+      )
+      .mockResolvedValueOnce(completion());
+    expect(await ask()).toEqual({ reply: "Hi." });
+    expect(sent(1).response_format).toEqual({ type: "json_object" });
+  });
+
   it("waits and retries when Groq says how long to wait", async () => {
     fetchMock.mockResolvedValueOnce(limited("Please try again in 10ms.")).mockResolvedValueOnce(completion());
-    const result = await chatCompletion({ messages: [], tools: [] });
-    expect(result.message.content).toBe("Hi.");
+    expect(await ask()).toEqual({ reply: "Hi." });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("gives up when the wait doesn't fit the time budget", async () => {
     fetchMock.mockResolvedValue(limited("Please try again in 40s."));
-    await expect(chatCompletion({ messages: [], tools: [], deadline: Date.now() + 5_000 })).rejects.toMatchObject({
-      status: 429,
-    });
+    await expect(ask(Date.now() + 5_000)).rejects.toMatchObject({ status: 429 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("sends low reasoning effort and a small token cap for gpt-oss", async () => {
-    fetchMock.mockResolvedValueOnce(completion());
-    await chatCompletion({ messages: [], tools: [] });
-    const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(payload).toMatchObject({ reasoning_effort: "low", max_completion_tokens: 1024, parallel_tool_calls: true });
+  it("reports truncated and invalid output clearly", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    fetchMock.mockResolvedValueOnce(completion('{"reply":"Hi', "length"));
+    await expect(ask()).rejects.toMatchObject({ userMessage: expect.stringMatching(/split it/) });
+    fetchMock.mockResolvedValueOnce(completion("not json"));
+    await expect(ask()).rejects.toBeInstanceOf(GroqError);
   });
 
   it("does not retry other errors", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: "boom" } }), { status: 500 }));
-    await expect(chatCompletion({ messages: [], tools: [] })).rejects.toBeInstanceOf(GroqError);
+    await expect(ask()).rejects.toBeInstanceOf(GroqError);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

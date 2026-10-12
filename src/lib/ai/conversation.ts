@@ -1,86 +1,87 @@
 import { z } from "zod";
 import { APP_TIME_ZONE, describeToday } from "@/lib/dates";
+import { MAX_DEPTH } from "@/lib/depth";
 import type { ChatMessage } from "@/lib/types";
 
-export const MAX_HISTORY_MESSAGES = 40;
-const MAX_TOOL_RESULT_CHARS = 4000;
+export const MAX_HISTORY_MESSAGES = 20;
 
-const toolCall = z.object({
-  id: z.string().max(200),
-  type: z.literal("function"),
-  function: z.object({ name: z.string().max(100), arguments: z.string().max(20_000) }),
-});
-
-export const chatMessageSchema: z.ZodType<ChatMessage> = z.union([
-  z.object({ role: z.literal("user"), content: z.string().max(4000) }),
-  z.object({
-    role: z.literal("assistant"),
-    content: z.string().max(8000).nullable(),
-    tool_calls: z.array(toolCall).max(20).optional(),
-  }),
-  z.object({ role: z.literal("tool"), tool_call_id: z.string().max(200), content: z.string().max(20_000) }),
-]);
+/**
+ * History as sent by the client. Lenient on purpose: older sessions may still
+ * hold tool-call messages from the previous assistant design; those are dropped.
+ */
+const historySchema = z
+  .array(
+    z.object({
+      role: z.string().max(20),
+      content: z.string().max(8000).nullish(),
+    }),
+  )
+  .max(200)
+  .default([])
+  .transform((messages) =>
+    messages
+      .filter((m): m is { role: "user" | "assistant"; content: string } =>
+        (m.role === "user" || m.role === "assistant") && !!m.content?.trim(),
+      )
+      .map((m) => ({ role: m.role, content: m.content })),
+  );
 
 export const assistantInput = z.object({
   text: z.string().trim().min(1, "Say something first.").max(2000),
-  history: z.array(chatMessageSchema).max(200).default([]),
+  history: historySchema,
+  pendingDelete: z
+    .object({
+      ids: z.array(z.uuid()).min(1).max(50),
+      titles: z.array(z.string().max(500)).max(50),
+      total: z.number().int().min(1).max(10_000),
+    })
+    .nullish(),
 });
 
-/**
- * Keeps the most recent messages, cutting only at a user message so that an
- * assistant tool call is never separated from its tool results.
- */
+/** Keeps the most recent messages, starting at a user message. */
 export function trimHistory(messages: ChatMessage[], max = MAX_HISTORY_MESSAGES): ChatMessage[] {
   if (messages.length <= max) return messages;
-  for (let start = messages.length - max; start < messages.length; start++) {
-    if (messages[start].role === "user") return messages.slice(start);
-  }
-  return [];
-}
-
-/** Shortens bulky tool results before they are stored in the client's history. */
-export function compactForHistory(messages: ChatMessage[]): ChatMessage[] {
-  return messages.map((m) =>
-    m.role === "tool" && m.content.length > MAX_TOOL_RESULT_CHARS
-      ? { ...m, content: `${m.content.slice(0, MAX_TOOL_RESULT_CHARS)}… [truncated]` }
-      : m,
-  );
-}
-
-/** True if an earlier assistant reply exists (i.e. the assistant could have asked for confirmation). */
-export function hasPriorAssistantReply(history: ChatMessage[]): boolean {
-  return history.some((m) => m.role === "assistant" && !!m.content?.trim());
+  const recent = messages.slice(-max);
+  const firstUser = recent.findIndex((m) => m.role === "user");
+  return firstUser < 0 ? [] : recent.slice(firstUser);
 }
 
 export function systemPrompt(
-  now: Date = new Date(),
-  labels?: { statuses: string[]; priorities: string[] },
+  now: Date,
+  labels: { statuses: string[]; priorities: string[] },
+  snapshot: string,
 ): string {
   const d = describeToday(now);
   const names = (list: string[]) => (list.length ? list.join(", ") : "(none defined)");
-  const labelLine = labels
-    ? `- Statuses (in order; new tasks get the first): ${names(labels.statuses)}. Priorities: ${names(labels.priorities)}. Use these exact names.`
-    : "- Statuses and priorities are user-defined; use the names returned by list_statuses / list_priorities.";
   return `You are the voice planning assistant in "PureTask Lite", a personal day planner. The user speaks to you; your reply is read aloud.
 
-Now: ${d.long}, ${d.time} (${APP_TIME_ZONE}). Today is ${d.today} (${d.weekday}).
-Weeks run Monday to Sunday.
+Now: ${d.long}, ${d.time} (${APP_TIME_ZONE}). Today is ${d.today} (${d.weekday}). Weeks run Monday to Sunday.
 This week: ${d.thisWeek.join(", ")}.
 Next week: ${d.nextWeek.join(", ")}.
+Resolve relative dates with this calendar: "this Friday" = Friday of this week; "next Friday" = the first Friday after today; "the weekend" = Saturday and Sunday.
 
-Resolve relative dates against this calendar: "today", "tomorrow", "yesterday", "this Friday" (the Friday of this week), "next Friday" (the first Friday after today), "this week", "next week", "in two weeks", "the weekend" (Saturday and Sunday). When you act on a date, mention it naturally in your reply (e.g. "Friday the 16th") so the user can correct you.
+Statuses (new tasks get the first one): ${names(labels.statuses)}.
+Priorities: ${names(labels.priorities)}.
 
-How the planner works:
-- Every task belongs to one day. A task can have sub-notes nested at most 3 levels below the top-level task (parent_id links them). Sub-notes share their top-level task's date.
-${labelLine}
+ANSWER WITH ONE JSON OBJECT containing:
+- "reply": what to say to the user. Spoken English, 1–3 short sentences, plain text; no handles, ids, markdown or emoji. Mention dates naturally ("Friday the 16th").
+- "operations": EVERY change needed for the request, all in this one answer (empty array if none). Each item has all of these fields; use null for fields that don't apply:
+  - create: {"op":"create","ref":"a","date":"YYYY-MM-DD","title":"…","parent":null,"description":null,"status":null,"priority":null,"id":null}
+    - "ref" is your own short label for the new task, so sub-notes in the same answer can point to it.
+    - For a sub-note set "parent" to the ref of a task created in this answer, or to the handle of an existing task; its "date" is ignored (it uses the parent's day).
+    - Sub-notes can be nested at most ${MAX_DEPTH} levels below a top-level task.
+  - update: {"op":"update","id":"<handle>", plus only the fields to change: "title", "date" (moves it with its sub-notes; a moved sub-note becomes a top-level task), "description" ("" clears it), "status" / "priority" (a name, or "none" to clear)}
+  - delete: {"op":"delete","id":"<handle>"}. This also deletes its sub-notes. If more than one task would be deleted, the app asks the user to confirm before deleting; just list the operations.
+- "lookup": {"query":null,"from":null,"to":null}. Fill it in ONLY when the user refers to tasks that are not in the list below: a search text and/or a date range (YYYY-MM-DD). Then leave "operations" empty; you'll get the matching tasks and answer again.
 
 Rules:
-- Work in as few steps as possible: put ALL independent tool calls in the same response. Example: to add a task with a sub-note plus a task on each day Monday–Friday, create every top-level task in one response, then add the sub-notes (they need the parent id) in the next.
-- Creating new tasks needs no lookup first. Before changing or deleting existing tasks, find them with list_tasks or search_tasks, or take ids from earlier in this conversation (e.g. "move that one to tomorrow"). Never invent ids.
-- If the conversation shows an earlier request was only partly done, continue from where it stopped; don't redo what's already created.
-- Deletions: if a request would delete more than one task in total (several tasks, or one task that has sub-notes), do not delete anything yet. Tell the user exactly what would be deleted and ask them to confirm. Only after they confirm in their next message, call delete_task with confirmed=true. A single task without sub-notes may be deleted directly.
-- If a tool returns an error, fix the call or explain the problem briefly.
-- If the request is ambiguous, ask one short question instead of guessing.
+- Titles: short to-do phrases based on the user's words. Put extra detail in "description" only if the user gives some.
+- Set "status" or "priority" only when the user mentions them.
+- Use handles exactly as shown in the task list or earlier in the conversation; never invent them.
+- Don't repeat changes the conversation shows were already made.
+- If the request is unclear, ask one short question in "reply" with no operations.
+- For questions about the plan, answer from the task list.
 
-Reply style: spoken English, 1–3 short sentences, plain text only — no markdown, lists, ids, or emoji.`;
+Task list (handle "title" [status, priority]):
+${snapshot}`;
 }
