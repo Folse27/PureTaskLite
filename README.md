@@ -77,7 +77,7 @@ git push -u origin main
    | `SESSION_SECRET` | your random string from step 2 |
    | `GROQ_API_KEY` | your key from step 3 |
    | `GROQ_CHAT_MODEL` | `openai/gpt-oss-120b` |
-   | `GROQ_STT_MODEL` | `whisper-large-v3-turbo` |
+   | `GROQ_STT_MODEL` | `whisper-large-v3` |
    | `CRON_SECRET` | another random string (generate it like `SESSION_SECRET`) |
 
 4. Click **Deploy**. This first build succeeds but logs
@@ -234,7 +234,7 @@ All of them are server-only; none are sent to the browser.
 | `SESSION_SECRET` | yes | ≥ 32 random characters. Signs the session cookie and keys the stored IP hashes. Changing it signs you out everywhere. |
 | `GROQ_API_KEY` | for voice | Groq API key from [console.groq.com](https://console.groq.com/keys). |
 | `GROQ_CHAT_MODEL` | no | Chat model. Default `openai/gpt-oss-120b`. Best with a model that supports strict structured outputs (the `openai/gpt-oss-*` models do); others fall back to JSON mode. |
-| `GROQ_STT_MODEL` | no | Speech-to-text model. Default `whisper-large-v3-turbo`. |
+| `GROQ_STT_MODEL` | no | Speech-to-text model. Default `whisper-large-v3`, which is more accurate than `whisper-large-v3-turbo` and has the same free-tier limits. |
 | `GROQ_STT_LANGUAGE` | no | Language you speak, as an ISO code (`en`, `de`, …). Default `en`. `auto` lets Whisper guess, which often misfires on short phrases. |
 | `CRON_SECRET` | recommended | Random string. Authorizes the daily keep-alive job (see below). Without it the job is disabled. |
 

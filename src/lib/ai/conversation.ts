@@ -50,6 +50,8 @@ export function systemPrompt(
   now: Date,
   labels: { statuses: string[]; priorities: string[] },
   snapshot: string,
+  /** Extra task lists: months the user mentioned, or lookup results. */
+  extraSections: { title: string; body: string }[] = [],
 ): string {
   const d = describeToday(now);
   const names = (list: string[]) => (list.length ? list.join(", ") : "(none defined)");
@@ -72,7 +74,7 @@ ANSWER WITH ONE JSON OBJECT containing:
     - Sub-notes can be nested at most ${MAX_DEPTH} levels below a top-level task.
   - update: {"op":"update","id":"<handle>", plus only the fields to change: "title", "date" (moves it with its sub-notes; a moved sub-note becomes a top-level task), "description" ("" clears it), "status" / "priority" (a name, or "none" to clear)}
   - delete: {"op":"delete","id":"<handle>"}. This also deletes its sub-notes. If more than one task would be deleted, the app asks the user to confirm before deleting; just list the operations.
-- "lookup": {"query":null,"from":null,"to":null}. Fill it in ONLY when the user refers to tasks that are not in the list below: a search text and/or a date range (YYYY-MM-DD). Then leave "operations" empty; you'll get the matching tasks and answer again.
+- "lookup": {"query":null,"from":null,"to":null}. Fill it in ONLY when the user refers to tasks or dates that none of the task lists below cover: a search text and/or a date range (YYYY-MM-DD). Then leave "operations" empty and "reply" as an empty string; you'll get the matching tasks and answer again.
 
 Rules:
 - Titles: short to-do phrases based on the user's words. Put extra detail in "description" only if the user gives some.
@@ -80,8 +82,9 @@ Rules:
 - Use handles exactly as shown in the task list or earlier in the conversation; never invent them.
 - Don't repeat changes the conversation shows were already made.
 - If the request is unclear, ask one short question in "reply" with no operations.
-- For questions about the plan, answer from the task list.
+- For questions about the plan, answer from the task lists below. "reply" must contain the complete answer: name the tasks and their days (e.g. "In June you had one task: Book dentist appointment on Wednesday the 3rd."). If there are more than about 8, give the count and the most notable ones. If there are none, say so.
+- Never write a reply that only announces information (like "Here are your tasks:"); there is no second message, the reply is all the user hears.
 
 Task list (handle "title" [status, priority]):
-${snapshot}`;
+${snapshot}${extraSections.map((s) => `\n\n${s.title}\n${s.body}`).join("")}`;
 }

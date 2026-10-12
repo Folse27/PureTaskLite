@@ -1,10 +1,13 @@
 import "server-only";
 
+import { transcriptFrom, type WhisperResult } from "./stt";
+
 const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
 const MODELS_DOC = "https://console.groq.com/docs/models";
 
 export const chatModel = () => process.env.GROQ_CHAT_MODEL?.trim() || "openai/gpt-oss-120b";
-export const sttModel = () => process.env.GROQ_STT_MODEL?.trim() || "whisper-large-v3-turbo";
+/** whisper-large-v3 is more accurate than -turbo (notably with accents); both have the same free-tier limits. */
+export const sttModel = () => process.env.GROQ_STT_MODEL?.trim() || "whisper-large-v3";
 /**
  * Spoken language for Whisper (ISO-639-1). Defaults to English: auto-detection
  * misfires on short clips (e.g. "Can you hear me?" came back as Icelandic).
@@ -135,13 +138,11 @@ async function groqFetch(
   }
 }
 
-interface VerboseTranscription {
-  text: string;
-  segments?: { text: string; no_speech_prob?: number }[];
-}
-
-/** Speech-to-text. Returns "" when nothing intelligible was said. */
-export async function transcribe(audio: Blob, filename: string): Promise<string> {
+/**
+ * Speech-to-text. `prompt` gives Whisper context (planner words, task names)
+ * so it spells them right. Returns "" when nothing intelligible was said.
+ */
+export async function transcribe(audio: Blob, filename: string, prompt = ""): Promise<string> {
   const model = sttModel();
   const form = new FormData();
   form.append("file", audio, filename);
@@ -150,20 +151,10 @@ export async function transcribe(audio: Blob, filename: string): Promise<string>
   form.append("temperature", "0");
   const language = sttLanguage();
   if (language) form.append("language", language);
+  if (prompt) form.append("prompt", prompt);
 
   const response = await groqFetch("/audio/transcriptions", { method: "POST", body: form }, model, "GROQ_STT_MODEL");
-  const result = (await response.json()) as VerboseTranscription;
-
-  // Whisper tends to "hear" things like "Thank you." in silence; drop segments it flags as non-speech.
-  const segments = result.segments ?? [];
-  if (segments.length > 0) {
-    return segments
-      .filter((s) => (s.no_speech_prob ?? 0) < 0.7)
-      .map((s) => s.text)
-      .join("")
-      .trim();
-  }
-  return (result.text ?? "").trim();
+  return transcriptFrom((await response.json()) as WhisperResult, prompt);
 }
 
 export type ChatRole = "system" | "user" | "assistant";

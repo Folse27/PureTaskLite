@@ -97,6 +97,15 @@ describe("transcribe language", () => {
     expect(sentLanguage()).toBe("en");
   });
 
+  it("sends the vocabulary prompt and uses whisper-large-v3 by default", async () => {
+    fetchMock.mockResolvedValueOnce(ok({ text: "Move the dentist appointment to Friday" }));
+    const text = await transcribe(new Blob(["x"], { type: "audio/mp4" }), "audio.mp4", "Tasks: Book dentist appointment.");
+    const form = fetchMock.mock.calls[0][1].body as FormData;
+    expect(form.get("prompt")).toBe("Tasks: Book dentist appointment.");
+    expect(form.get("model")).toBe("whisper-large-v3");
+    expect(text).toBe("Move the dentist appointment to Friday");
+  });
+
   it("can be switched to auto-detect", async () => {
     vi.stubEnv("GROQ_STT_LANGUAGE", "auto");
     fetchMock.mockResolvedValueOnce(ok({ text: "Hallo" }));

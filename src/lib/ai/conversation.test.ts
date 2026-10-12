@@ -60,5 +60,13 @@ describe("systemPrompt", () => {
     expect(prompt).toContain("ANSWER WITH ONE JSON OBJECT");
     expect(prompt).toContain("Set \"status\" or \"priority\" only when the user mentions them.");
     expect(prompt.endsWith("TASK-LIST-HERE")).toBe(true);
+    expect(prompt).toContain("Never write a reply that only announces information");
+  });
+
+  it("appends extra task lists after the main one", () => {
+    const withMonth = systemPrompt(new Date("2026-10-12T08:41:00Z"), { statuses: [], priorities: [] }, "MAIN", [
+      { title: "Months the user mentioned:", body: "June 2026: …" },
+    ]);
+    expect(withMonth.endsWith("MAIN\n\nMonths the user mentioned:\nJune 2026: …")).toBe(true);
   });
 });

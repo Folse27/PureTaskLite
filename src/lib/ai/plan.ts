@@ -1,7 +1,8 @@
 import { z } from "zod";
-import { isISODate } from "@/lib/dates";
+import { format } from "date-fns";
+import { fromISODate, isISODate } from "@/lib/dates";
 import { MAX_DEPTH } from "@/lib/depth";
-import type { AssistantChange, Label, PendingDelete, TaskPatch } from "@/lib/types";
+import type { AssistantChange, Label, PendingDelete, Task, TaskPatch } from "@/lib/types";
 
 /*
  * The model answers every request with ONE JSON object: a spoken reply plus a
@@ -362,4 +363,23 @@ export function historyNote(changes: AssistantChange[], pending: PendingDelete |
   );
   if (pending) items.push(`waiting for confirmation to delete ${pending.ids.map(handle).join(", ")}`);
   return items.length ? `\n[${items.join("; ")}]` : "";
+}
+
+/** A reply that promises information it doesn't contain ("Here are your tasks:") or says nothing. */
+export function isIncompleteReply(reply: string): boolean {
+  const t = reply.trim();
+  return t === "" || /[:：]$/.test(t);
+}
+
+/**
+ * Spoken list of tasks, used when the model's answer to a question came back
+ * incomplete. Lists top-level tasks only; sub-notes would make it too long to hear.
+ */
+export function spokenTaskList(tasks: Task[], max = 6): string {
+  const top = tasks.filter((t) => t.parentId === null).sort((a, b) => a.date.localeCompare(b.date));
+  if (top.length === 0) return "I didn't find any tasks for that.";
+  const items = top.slice(0, max).map((t) => `${t.title} on ${format(fromISODate(t.date), "EEEE, MMMM do")}`);
+  const more = top.length > max ? `, and ${top.length - max} more` : "";
+  const list = items.length > 1 ? `${items.slice(0, -1).join("; ")}; and ${items.at(-1)}` : items[0];
+  return `I found ${top.length} task${top.length === 1 ? "" : "s"}: ${list}${more}.`;
 }

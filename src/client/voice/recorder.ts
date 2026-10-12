@@ -63,7 +63,7 @@ export class Recorder {
     try {
       this.recorder = new MediaRecorder(this.stream, {
         ...(mimeType ? { mimeType } : {}),
-        audioBitsPerSecond: 48_000,
+        audioBitsPerSecond: 64_000,
       });
     } catch {
       this.release();

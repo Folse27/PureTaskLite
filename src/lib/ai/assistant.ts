@@ -10,14 +10,17 @@ import {
   composeReply,
   handlesIn,
   historyNote,
+  isIncompleteReply,
   modelResponseSchema,
   planOperations,
   RESPONSE_JSON_SCHEMA,
+  spokenTaskList,
   summarize,
   type ModelResponse,
 } from "./plan";
+import { findMentionedRanges } from "./date-refs";
 import { handleOf } from "./snapshot";
-import { deleteConfirmed, executePlan, loadSnapshot, lookupTasks, resolveHandles } from "./store";
+import { deleteConfirmed, executePlan, loadRanges, loadSnapshot, lookupTasks, resolveHandles } from "./store";
 
 /** Stay well inside the route's 60 s limit, including time spent waiting out rate limits. */
 const TIME_BUDGET_MS = 50_000;
@@ -84,35 +87,54 @@ export async function runAssistant(request: AssistantRequest): Promise<Assistant
   const deadline = Date.now() + TIME_BUDGET_MS;
   const today = todayISO();
   const [statuses, priorities] = await Promise.all([listLabels("statuses"), listLabels("priorities")]);
-  const snapshot = await loadSnapshot(today, { statuses, priorities });
-  const messages: { role: ChatRole; content: string }[] = [
+  const labels = { statuses, priorities };
+  const snapshot = await loadSnapshot(today, labels);
+
+  // Months the user mentioned ("What did I do in June?") go into the prompt up front.
+  const ranges = findMentionedRanges(request.text, today);
+  const mentioned = ranges.length ? await loadRanges(ranges, today, labels) : null;
+  const sections: { title: string; body: string }[] = mentioned
+    ? [{ title: "Complete task lists for the months the user mentioned (including sub-notes):", body: mentioned.text }]
+    : [];
+  const contextTasks = [...(mentioned?.tasks ?? [])];
+
+  const build = () => [
     {
-      role: "system",
+      role: "system" as const,
       content: systemPrompt(
         new Date(),
-        { statuses: statuses.map((l) => l.name), priorities: priorities.map((l) => l.name) },
+        { statuses: labels.statuses.map((l) => l.name), priorities: labels.priorities.map((l) => l.name) },
         snapshot,
+        sections,
       ),
     },
     ...trimHistory(request.history),
-    { role: "user", content: request.text },
+    { role: "user" as const, content: request.text },
   ];
 
-  let response = await ask(messages, deadline);
+  let response = await ask(build(), deadline);
+  let lookedUp = false;
   if (response.lookup) {
-    const found = await lookupTasks(response.lookup, today, { statuses, priorities });
-    messages.push(
-      { role: "assistant", content: JSON.stringify(response) },
-      {
-        role: "system",
-        content: `Lookup results:\n${found}\n\nNow answer the user's request. Set every "lookup" field to null.`,
-      },
-    );
-    response = await ask(messages, deadline);
+    // Ask again with the results as context — not as a continuation of the first answer,
+    // which tends to make the model repeat its placeholder reply.
+    const found = await lookupTasks(response.lookup, today, labels);
+    contextTasks.push(...found.tasks);
+    const what = [response.lookup.query && `"${response.lookup.query}"`, response.lookup.from, response.lookup.to]
+      .filter(Boolean)
+      .join(" ");
+    sections.push({
+      title: `Lookup results for ${what} (complete; answer from these, "lookup" must be null):`,
+      body: found.text,
+    });
+    response = await ask(build(), deadline);
+    lookedUp = true;
   }
+  console.info(
+    `[assistant] months=${ranges.map((r) => r.label).join("|") || "-"} lookup=${lookedUp} ops=${response.operations.length}`,
+  );
 
   const known = await resolveHandles(handlesIn(response.operations));
-  const plan = planOperations(response.operations, { known, statuses, priorities });
+  const plan = planOperations(response.operations, { known, ...labels });
 
   const pendingDelete: PendingDelete | null =
     plan.deleteTotal > 1
@@ -127,5 +149,10 @@ export async function runAssistant(request: AssistantRequest): Promise<Assistant
     throw new HttpError(500, "Something went wrong while saving, so nothing was changed. Please try again.");
   }
 
-  return finish(request, composeReply(response.reply, changes, plan.problems, pendingDelete), changes, pendingDelete);
+  let reply = composeReply(response.reply, changes, plan.problems, pendingDelete);
+  // Safety net: a question answered with nothing (or "Here are your tasks:") gets the list we already have.
+  if (response.operations.length === 0 && isIncompleteReply(reply) && (ranges.length > 0 || lookedUp)) {
+    reply = spokenTaskList(contextTasks);
+  }
+  return finish(request, reply, changes, pendingDelete);
 }

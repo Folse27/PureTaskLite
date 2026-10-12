@@ -15,6 +15,7 @@ import {
   updateTaskTx,
 } from "@/lib/server/tasks";
 import type { AssistantChange, Label, Task } from "@/lib/types";
+import type { DateRange } from "./date-refs";
 import type { KnownTask, Plan } from "./plan";
 import { renderSnapshot, renderTasksByDate, selectOutside, SNAPSHOT_CAP, snapshotWindow } from "./snapshot";
 
@@ -87,12 +88,41 @@ export async function resolveHandles(handles: string[]): Promise<Map<string, Kno
   return known;
 }
 
+const MAX_CONTEXT_TASKS = 150;
+
+/** Keeps a large result readable: all tasks if they fit, otherwise top-level tasks only. */
+function fitForContext(found: Task[]): { tasks: Task[]; note: string } {
+  if (found.length <= MAX_CONTEXT_TASKS) return { tasks: found, note: "" };
+  const tasks = found.filter((t) => t.parentId === null).slice(0, MAX_CONTEXT_TASKS);
+  return { tasks, note: `\n(${found.length} tasks in total; showing ${tasks.length} top-level tasks only)` };
+}
+
+/**
+ * Complete task lists for the months the user mentioned, rendered for the
+ * prompt. Saves the model a lookup round-trip for "What did I do in June?".
+ */
+export async function loadRanges(
+  ranges: DateRange[],
+  today: string,
+  labels: Labels,
+): Promise<{ text: string; tasks: Task[] }> {
+  const sections: string[] = [];
+  const all: Task[] = [];
+  for (const range of ranges) {
+    const { tasks: found, note } = fitForContext(await listTasks(range.from, range.to));
+    all.push(...found);
+    const lines = renderTasksByDate(found, today, labels);
+    sections.push(`${range.label} (${range.from} – ${range.to}):\n${lines.length ? lines.join("\n") : "(no tasks)"}${note}`);
+  }
+  return { text: sections.join("\n\n"), tasks: all };
+}
+
 /** Tasks matching the model's lookup (a text query and/or a date range), rendered like the snapshot. */
 export async function lookupTasks(
   lookup: { query?: string; from?: string; to?: string },
   today: string,
   labels: Labels,
-): Promise<string> {
+): Promise<{ text: string; tasks: Task[] }> {
   let found: Task[] = [];
   const from = lookup.from && isISODate(lookup.from) ? lookup.from : undefined;
   const to = lookup.to && isISODate(lookup.to) ? lookup.to : undefined;
@@ -109,8 +139,9 @@ export async function lookupTasks(
   } else if (lookup.query) {
     found = await searchTasks(lookup.query, 40);
   }
-  const lines = renderTasksByDate(found.slice(0, 120), today, labels);
-  return lines.length ? lines.join("\n") : "(nothing found)";
+  const { tasks, note } = fitForContext(found);
+  const lines = renderTasksByDate(tasks, today, labels);
+  return { text: lines.length ? lines.join("\n") + note : "(nothing found)", tasks };
 }
 
 /**

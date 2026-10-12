@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   loadSnapshot: vi.fn(),
   resolveHandles: vi.fn(),
   lookupTasks: vi.fn(),
+  loadRanges: vi.fn(),
   executePlan: vi.fn(),
   deleteConfirmed: vi.fn(),
 }));
@@ -21,6 +22,7 @@ vi.mock("./store", () => ({
   loadSnapshot: mocks.loadSnapshot,
   resolveHandles: mocks.resolveHandles,
   lookupTasks: mocks.lookupTasks,
+  loadRanges: mocks.loadRanges,
   executePlan: mocks.executePlan,
   deleteConfirmed: mocks.deleteConfirmed,
 }));
@@ -99,7 +101,7 @@ describe("runAssistant", () => {
   });
 
   it("does a second call only when the model asks for a lookup", async () => {
-    mocks.lookupTasks.mockResolvedValueOnce("LOOKUP-RESULTS");
+    mocks.lookupTasks.mockResolvedValueOnce({ text: "LOOKUP-RESULTS", tasks: [] });
     mocks.chatJson
       .mockResolvedValueOnce(answer("", [], { query: "dentist", from: null, to: null }))
       .mockResolvedValueOnce(answer("Moved the dentist to Friday.", [{ op: "update", id: "bbbbbb", date: "2026-10-16" }]));
@@ -111,7 +113,10 @@ describe("runAssistant", () => {
       priorities,
     });
     expect(mocks.chatJson).toHaveBeenCalledTimes(2);
-    expect(mocks.chatJson.mock.calls[1][0].messages.at(-1).content).toContain("LOOKUP-RESULTS");
+    // The retry carries the results in its context and does NOT replay the first (placeholder) answer.
+    const retry = mocks.chatJson.mock.calls[1][0].messages;
+    expect(retry[0].content).toContain("LOOKUP-RESULTS");
+    expect(retry.map((m: { role: string }) => m.role)).toEqual(["system", "user"]);
     expect(result.reply).toBe("Moved the dentist to Friday.");
   });
 
@@ -206,5 +211,47 @@ describe("runAssistant", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     mocks.chatJson.mockResolvedValueOnce({ reply: 5, operations: "lots" });
     await expect(runAssistant({ text: "hi", history: [] })).rejects.toMatchObject({ status: 502 });
+  });
+
+  it("answers a month question in one call, with that month's tasks in the prompt", async () => {
+    mocks.loadRanges.mockResolvedValueOnce({ text: "JUNE-TASKS", tasks: [] });
+    mocks.chatJson.mockResolvedValueOnce(answer("In June you had one task: Book dentist appointment on Wednesday the 3rd."));
+
+    const result = await runAssistant({ text: "What did I do in June, 2026?", history: [] });
+
+    expect(mocks.loadRanges.mock.calls[0][0]).toEqual([{ from: "2026-06-01", to: "2026-06-30", label: "June 2026" }]);
+    expect(mocks.chatJson).toHaveBeenCalledTimes(1);
+    expect(mocks.chatJson.mock.calls[0][0].messages[0].content).toContain("JUNE-TASKS");
+    expect(result.reply).toBe("In June you had one task: Book dentist appointment on Wednesday the 3rd.");
+  });
+
+  it("replaces a reply that only announces a list with the actual tasks", async () => {
+    mocks.loadRanges.mockResolvedValueOnce({
+      text: "JUNE-TASKS",
+      tasks: [
+        {
+          id: UUID_A,
+          date: "2026-06-03",
+          parentId: null,
+          depth: 0,
+          title: "Book dentist appointment",
+          description: null,
+          statusId: "s1",
+          priorityId: null,
+          sortOrder: 0,
+          createdAt: "",
+          updatedAt: "",
+        },
+      ],
+    });
+    mocks.chatJson.mockResolvedValueOnce(answer("Here are the tasks you recorded in June 2026:"));
+    const result = await runAssistant({ text: "What did I do in June 2026?", history: [] });
+    expect(result.reply).toBe("I found 1 task: Book dentist appointment on Wednesday, June 3rd.");
+  });
+
+  it("doesn't load months when none are mentioned", async () => {
+    mocks.chatJson.mockResolvedValueOnce(answer("Added."));
+    await runAssistant({ text: "add milk tomorrow", history: [] });
+    expect(mocks.loadRanges).not.toHaveBeenCalled();
   });
 });

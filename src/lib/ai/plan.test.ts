@@ -4,6 +4,8 @@ import {
   classifyConfirmation,
   composeReply,
   handlesIn,
+  isIncompleteReply,
+  spokenTaskList,
   modelResponseSchema,
   planOperations,
   type KnownTask,
@@ -190,5 +192,39 @@ describe("composeReply", () => {
     expect(
       composeReply("Deleted them.", [created], [], { ids: ["a", "b"], titles: ["Gym", "Portfolio"], total: 4 }),
     ).toBe("I added 1 task. Should I delete “Gym” and “Portfolio”? That's 4 tasks, including 2 sub-notes. Say yes to confirm.");
+  });
+});
+
+describe("incomplete replies and spoken task lists", () => {
+  it("detects replies that only announce information", () => {
+    expect(isIncompleteReply("Here are the tasks you recorded in June 2026:")).toBe(true);
+    expect(isIncompleteReply("  ")).toBe(true);
+    expect(isIncompleteReply("In June you had one task.")).toBe(false);
+  });
+
+  const t = (title: string, date: string, parentId: string | null = null) => ({
+    id: title,
+    title,
+    date,
+    parentId,
+    depth: parentId ? 1 : 0,
+    description: null,
+    statusId: null,
+    priorityId: null,
+    sortOrder: 0,
+    createdAt: "",
+    updatedAt: "",
+  });
+
+  it("lists top-level tasks in date order with spoken dates", () => {
+    expect(spokenTaskList([t("B", "2026-06-14"), t("A", "2026-06-03"), t("sub", "2026-06-03", "A")])).toBe(
+      "I found 2 tasks: A on Wednesday, June 3rd; and B on Sunday, June 14th.",
+    );
+  });
+
+  it("caps long lists and handles none", () => {
+    const many = Array.from({ length: 9 }, (_, i) => t(`T${i}`, `2026-06-${String(i + 1).padStart(2, "0")}`));
+    expect(spokenTaskList(many)).toMatch(/^I found 9 tasks: .*, and 3 more\.$/);
+    expect(spokenTaskList([])).toBe("I didn't find any tasks for that.");
   });
 });
