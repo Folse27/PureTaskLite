@@ -136,14 +136,15 @@ export async function runAssistant(request: AssistantRequest): Promise<Assistant
   const known = await resolveHandles(handlesIn(response.operations));
   const plan = planOperations(response.operations, { known, ...labels });
 
-  const pendingDelete: PendingDelete | null =
-    plan.deleteTotal > 1
-      ? { ids: plan.deletes.map((d) => d.id), titles: plan.deletes.map((d) => d.title), total: plan.deleteTotal }
-      : null;
+  // Tasks without sub-notes are deleted right away; a task with sub-notes waits for "yes" (or the Delete button).
+  const held = plan.deletes.filter((d) => d.count > 1);
+  const pendingDelete: PendingDelete | null = held.length
+    ? { ids: held.map((d) => d.id), titles: held.map((d) => d.title), total: held.reduce((n, d) => n + d.count, 0) }
+    : null;
 
   let changes: AssistantChange[];
   try {
-    changes = await executePlan(plan, { skipDeletes: pendingDelete !== null });
+    changes = await executePlan(plan, { holdDeleteIds: new Set(held.map((d) => d.id)) });
   } catch (error) {
     console.error("[assistant] Applying the plan failed; nothing was changed:", error);
     throw new HttpError(500, "Something went wrong while saving, so nothing was changed. Please try again.");

@@ -305,9 +305,9 @@ the theme quickly.
   - "What's on this week?"
   - "Move that one to tomorrow"
   - "Mark the report as done"
-  - "Delete everything on Sunday" — if more than one task would be deleted,
-    it asks first. Say "yes" (or tap **Delete**) to confirm, "no" (or
-    **Keep**) to cancel.
+  - "Delete everything on Sunday" — tasks are deleted right away, except a
+    task that has sub-notes: then it asks first. Say "yes" (or tap
+    **Delete**) to confirm, "no" (or **Keep**) to cancel.
 - The conversation lasts for the browser tab, so follow-ups work.
 - **New chat** starts over, and the speaker button mutes the spoken replies.
 
@@ -384,9 +384,10 @@ don't share memory.
   something can't be done, the spoken reply says exactly what.
 - **Lookups:** if you mention a task that isn't in the list, the model asks
   for a lookup, and only then is a second call made.
-- **Deleting more than one task** (including sub-notes) is held back. The
-  assistant asks, and your next "yes" or "no" is handled by the server without
-  calling the AI.
+- **Deleting:** tasks without sub-notes are deleted immediately, any number of
+  them. A task that has sub-notes is held back, and the server asks right away,
+  with **Delete** / **Keep** buttons. Your "yes" or "no" is handled by the
+  server without calling the AI. The AI itself never asks for confirmation.
 - The code lives in `src/lib/ai/`: `snapshot.ts` builds the task list,
   `plan.ts` defines the JSON format and validates it, and `store.ts` applies
   it to the database. All three are unit-tested.

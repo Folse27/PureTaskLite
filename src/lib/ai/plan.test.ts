@@ -188,10 +188,13 @@ describe("composeReply", () => {
     );
   });
 
-  it("asks for confirmation when deletes are held", () => {
-    expect(
-      composeReply("Deleted them.", [created], [], { ids: ["a", "b"], titles: ["Gym", "Portfolio"], total: 4 }),
-    ).toBe("I added 1 task. Should I delete “Gym” and “Portfolio”? That's 4 tasks, including 2 sub-notes. Say yes to confirm.");
+  it("asks for confirmation when tasks with sub-notes are held", () => {
+    expect(composeReply("Deleted it.", [created], [], { ids: ["a"], titles: ["Portfolio"], total: 3 })).toBe(
+      "I added 1 task. “Portfolio” has 2 sub-notes. Delete it together with them? Say yes or tap Delete.",
+    );
+    expect(composeReply("Deleted them.", [], [], { ids: ["a", "b"], titles: ["Gym", "Portfolio"], total: 4 })).toBe(
+      "“Gym” and “Portfolio” have 2 sub-notes between them. Delete them together with their sub-notes? Say yes or tap Delete.",
+    );
   });
 });
 

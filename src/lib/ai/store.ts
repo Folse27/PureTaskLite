@@ -146,9 +146,12 @@ export async function lookupTasks(
 
 /**
  * Applies a plan in ONE transaction: if anything fails, nothing is changed.
- * Deletes are skipped when they are being held for confirmation.
+ * Deletes listed in `holdDeleteIds` are skipped: they wait for the user's confirmation.
  */
-export async function executePlan(plan: Plan, options: { skipDeletes: boolean }): Promise<AssistantChange[]> {
+export async function executePlan(
+  plan: Plan,
+  options: { holdDeleteIds: ReadonlySet<string> },
+): Promise<AssistantChange[]> {
   if (plan.creates.length + plan.updates.length + plan.deletes.length === 0) return [];
   await ensureSeeded();
   return getDb().transaction(async (tx) => {
@@ -176,11 +179,10 @@ export async function executePlan(plan: Plan, options: { skipDeletes: boolean })
       changes.push({ kind, taskId: task.id, title: task.title, date: task.date });
     }
 
-    if (!options.skipDeletes) {
-      for (const step of plan.deletes) {
-        const { task, deletedIds } = await deleteTaskTx(tx, step.id);
-        changes.push({ kind: "deleted", taskId: task.id, title: task.title, date: task.date, count: deletedIds.length });
-      }
+    for (const step of plan.deletes) {
+      if (options.holdDeleteIds.has(step.id)) continue;
+      const { task, deletedIds } = await deleteTaskTx(tx, step.id);
+      changes.push({ kind: "deleted", taskId: task.id, title: task.title, date: task.date, count: deletedIds.length });
     }
     return changes;
   });

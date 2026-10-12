@@ -45,6 +45,8 @@ const UUID_A = "aaaaaaaa-0000-4000-8000-000000000001";
 const UUID_B = "bbbbbbbb-0000-4000-8000-000000000002";
 const knownA: KnownTask = { id: UUID_A, title: "Portfolio", date: "2026-10-12", depth: 0, subtreeIds: [UUID_A, "c1", "c2"] };
 const knownB: KnownTask = { id: UUID_B, title: "Gym", date: "2026-10-13", depth: 0, subtreeIds: [UUID_B] };
+const UUID_C = "cccccccc-0000-4000-8000-000000000003";
+const knownC: KnownTask = { id: UUID_C, title: "Homework", date: "2026-10-14", depth: 0, subtreeIds: [UUID_C] };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -54,11 +56,21 @@ beforeEach(() => {
     const all = new Map([
       ["aaaaaa", knownA],
       ["bbbbbb", knownB],
+      ["cccccc", knownC],
     ]);
     return new Map(handles.filter((h) => all.has(h)).map((h) => [h, all.get(h)!]));
   });
-  mocks.executePlan.mockImplementation(async (plan: { creates: { title: string; date: string | null }[] }) =>
-    plan.creates.map((c, i) => ({ kind: "created", taskId: `${i}0000000-new`, title: c.title, date: c.date ?? "2026-10-12" })),
+  // Mimics the real store: creates, then deletes that aren't held for confirmation.
+  mocks.executePlan.mockImplementation(
+    async (
+      plan: { creates: { title: string; date: string | null }[]; deletes: { id: string; title: string; date: string; count: number }[] },
+      options: { holdDeleteIds: ReadonlySet<string> },
+    ) => [
+      ...plan.creates.map((c, i) => ({ kind: "created", taskId: `${i}0000000-new`, title: c.title, date: c.date ?? "2026-10-12" })),
+      ...plan.deletes
+        .filter((d) => !options.holdDeleteIds.has(d.id))
+        .map((d) => ({ kind: "deleted", taskId: d.id, title: d.title, date: d.date, count: d.count })),
+    ],
   );
 });
 
@@ -78,7 +90,7 @@ describe("runAssistant", () => {
     expect(mocks.executePlan).toHaveBeenCalledTimes(1);
     const [plan, options] = mocks.executePlan.mock.calls[0];
     expect(plan.creates).toHaveLength(7);
-    expect(options).toEqual({ skipDeletes: false });
+    expect(options).toEqual({ holdDeleteIds: new Set() });
     expect(result.reply).toBe("Added your portfolio task with a sub-note, and homework help through Friday.");
     expect(result.changes).toHaveLength(7);
     expect(result.pendingDelete).toBeNull();
@@ -96,7 +108,7 @@ describe("runAssistant", () => {
     const result = await runAssistant({ text: "what's on today?", history: [] });
     expect(result.reply).toBe("You have two tasks today.");
     expect(mocks.executePlan).toHaveBeenCalledWith(expect.objectContaining({ creates: [], deletes: [] }), {
-      skipDeletes: false,
+      holdDeleteIds: new Set(),
     });
   });
 
@@ -120,26 +132,35 @@ describe("runAssistant", () => {
     expect(result.reply).toBe("Moved the dentist to Friday.");
   });
 
-  it("deletes a single task right away", async () => {
-    mocks.chatJson.mockResolvedValueOnce(answer("Deleted the gym session.", [{ op: "delete", id: "bbbbbb" }]));
-    const result = await runAssistant({ text: "delete gym", history: [] });
-    expect(mocks.executePlan.mock.calls[0][1]).toEqual({ skipDeletes: false });
+  it("deletes several tasks without sub-notes right away, without asking", async () => {
+    mocks.chatJson.mockResolvedValueOnce(
+      answer("Deleted your gym session and homework.", [
+        { op: "delete", id: "bbbbbb" },
+        { op: "delete", id: "cccccc" },
+      ]),
+    );
+    const result = await runAssistant({ text: "delete gym and homework", history: [] });
+
+    expect(mocks.executePlan.mock.calls[0][1]).toEqual({ holdDeleteIds: new Set() });
+    expect(result.changes.map((c) => c.kind)).toEqual(["deleted", "deleted"]);
     expect(result.pendingDelete).toBeNull();
+    expect(result.reply).toBe("Deleted your gym session and homework.");
   });
 
-  it("holds multi-task deletes for confirmation, applying the rest", async () => {
+  it("holds only tasks that have sub-notes, deleting the rest right away", async () => {
     mocks.chatJson.mockResolvedValueOnce(
       answer("Done!", [
         { op: "delete", id: "aaaaaa" },
+        { op: "delete", id: "bbbbbb" },
         { op: "create", date: "2026-10-12", title: "New thing" },
       ]),
     );
-    const result = await runAssistant({ text: "delete the portfolio and add a new thing", history: [] });
+    const result = await runAssistant({ text: "delete the portfolio and gym, add a new thing", history: [] });
 
-    expect(mocks.executePlan.mock.calls[0][1]).toEqual({ skipDeletes: true });
+    expect(mocks.executePlan.mock.calls[0][1]).toEqual({ holdDeleteIds: new Set([UUID_A]) });
     expect(result.pendingDelete).toEqual({ ids: [UUID_A], titles: ["Portfolio"], total: 3 });
     expect(result.reply).toBe(
-      "I added 1 task. Should I delete “Portfolio”? That's 3 tasks, including 2 sub-notes. Say yes to confirm.",
+      "I added 1 task and deleted 1 task. “Portfolio” has 2 sub-notes. Delete it together with them? Say yes or tap Delete.",
     );
     expect(result.history[1].content).toContain("waiting for confirmation to delete aaaaaa");
   });

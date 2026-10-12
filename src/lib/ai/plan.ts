@@ -327,10 +327,15 @@ function listTitles(titles: string[]): string {
   return shown.length > 1 ? `${shown.slice(0, -1).join(", ")} and ${shown.at(-1)}` : shown[0];
 }
 
+/** Asked only for tasks that have sub-notes (plain tasks are deleted right away). */
 export function confirmationQuestion(pending: PendingDelete): string {
-  const extra = pending.total - pending.ids.length;
-  const subnotes = extra > 0 ? `, including ${extra} sub-note${extra === 1 ? "" : "s"}` : "";
-  return `Should I delete ${listTitles(pending.titles)}? That's ${pending.total} task${pending.total === 1 ? "" : "s"}${subnotes}. Say yes to confirm.`;
+  const subnotes = pending.total - pending.ids.length;
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const question =
+    pending.ids.length === 1
+      ? `${quote(pending.titles[0])} has ${plural(subnotes, "sub-note")}. Delete it together with them?`
+      : `${listTitles(pending.titles)} have ${plural(subnotes, "sub-note")} between them. Delete them together with their sub-notes?`;
+  return `${question} Say yes or tap Delete.`;
 }
 
 /** The text spoken to the user: the model's reply, unless the server must correct it. */

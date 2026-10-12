@@ -73,7 +73,7 @@ ANSWER WITH ONE JSON OBJECT containing:
     - For a sub-note set "parent" to the ref of a task created in this answer, or to the handle of an existing task; its "date" is ignored (it uses the parent's day).
     - Sub-notes can be nested at most ${MAX_DEPTH} levels below a top-level task.
   - update: {"op":"update","id":"<handle>", plus only the fields to change: "title", "date" (moves it with its sub-notes; a moved sub-note becomes a top-level task), "description" ("" clears it), "status" / "priority" (a name, or "none" to clear)}
-  - delete: {"op":"delete","id":"<handle>"}. This also deletes its sub-notes. If more than one task would be deleted, the app asks the user to confirm before deleting; just list the operations.
+  - delete: {"op":"delete","id":"<handle>"}. This also deletes its sub-notes. NEVER ask the user to confirm a deletion yourself: when the user asks to delete, always include the delete operations right away (any number of them). The app deletes tasks without sub-notes immediately and itself asks before deleting a task that has sub-notes. In "reply", just say what was deleted.
 - "lookup": {"query":null,"from":null,"to":null}. Fill it in ONLY when the user refers to tasks or dates that none of the task lists below cover: a search text and/or a date range (YYYY-MM-DD). Then leave "operations" empty and "reply" as an empty string; you'll get the matching tasks and answer again.
 
 Rules:
