@@ -245,10 +245,10 @@ export const useAssistant = create<AssistantState>((set, get) => {
   };
 });
 
-/** Restore this tab's conversation and the mute preference (client-only). */
-export function hydrateAssistant() {
+/** Restore this tab's conversation and the mute preference (client-only). Returns an unsubscribe. */
+export function hydrateAssistant(): () => void {
   useAssistant.setState({ ...loadSession(), muted: loadMuted() });
-  useAssistant.subscribe((s, prev) => {
+  return useAssistant.subscribe((s, prev) => {
     if (s.turns === prev.turns && s.history === prev.history) return;
     try {
       sessionStorage.setItem(SESSION_KEY, JSON.stringify({ turns: s.turns.slice(-30), history: s.history }));

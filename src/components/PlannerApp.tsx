@@ -31,11 +31,14 @@ export function PlannerApp({ initial }: { initial: InitialData }) {
   useEffect(() => {
     usePlanner.getState().init(initial);
     useUi.getState().hydrate();
-    hydrateAssistant();
+    const stopPersisting = hydrateAssistant();
     // iOS: speech may only start inside a user gesture — unlock it on the first tap.
     const unlock = () => unlockSpeech();
     document.addEventListener("click", unlock, { once: true, capture: true });
-    return () => document.removeEventListener("click", unlock, { capture: true });
+    return () => {
+      stopPersisting();
+      document.removeEventListener("click", unlock, { capture: true });
+    };
   }, [initial]);
 
   // Pick up changes made elsewhere when coming back to the tab.

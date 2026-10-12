@@ -6,6 +6,7 @@ import { applyOrder, countTopLevel, subtreeIds } from "@/lib/task-tree";
 import type { Label, LabelKind, Task, TaskPatch } from "@/lib/types";
 import { api, ApiError } from "./api";
 import { toast } from "./toast-store";
+import { useUi, weekKey } from "./ui-store";
 
 /**
  * Client cache of the planner. Tasks are loaded per week (when a week is
@@ -134,8 +135,20 @@ export const usePlanner = create<PlannerState>((set, get) => {
           api<{ labels: Label[] }>("/api/labels/statuses"),
           api<{ labels: Label[] }>("/api/labels/priorities"),
         ]);
-        set({ counts, statuses, priorities });
-        await Promise.all(Object.keys(get().loadedWeeks).map((monday) => get().loadWeek(monday, true)));
+        // Refetch only weeks that are open; forget the rest (they reload lazily when reopened,
+        // and their badges use the fresh counts). Keeps refresh cost flat over a long session.
+        const expanded = useUi.getState().expanded;
+        const open = Object.keys(get().loadedWeeks).filter((monday) => expanded[weekKey(monday)]);
+        set((s) => {
+          const tasksByDate = { ...s.tasksByDate };
+          const loadedWeeks: Record<string, true> = {};
+          for (const monday of Object.keys(s.loadedWeeks)) {
+            if (expanded[weekKey(monday)]) loadedWeeks[monday] = true;
+            else for (const day of daysOfWeek(monday)) delete tasksByDate[day];
+          }
+          return { counts, statuses, priorities, tasksByDate, loadedWeeks };
+        });
+        await Promise.all(open.map((monday) => get().loadWeek(monday, true)));
       } catch (error) {
         toast(errorMessage(error, "Couldn't refresh the plan."));
       }
