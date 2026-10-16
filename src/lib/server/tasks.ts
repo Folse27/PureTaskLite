@@ -1,12 +1,13 @@
 import "server-only";
 import { and, asc, eq, gte, ilike, inArray, isNull, lte, or, sql } from "drizzle-orm";
-import { childDepth } from "@/lib/depth";
+import { childDepth, DepthLimitError, MAX_DEPTH } from "@/lib/depth";
+import { priorityOrder, type MoveTarget } from "@/lib/task-tree";
 import { getDb, schema, type Transaction } from "@/lib/db";
 import type { Task, TaskPatch } from "@/lib/types";
 import { HttpError, notFound } from "./http";
 import { ensureSeeded } from "./labels";
 
-const { tasks, statuses } = schema;
+const { tasks, statuses, priorities } = schema;
 
 type Row = typeof tasks.$inferSelect;
 
@@ -116,7 +117,9 @@ export async function createTaskTx(tx: Transaction, input: CreateTaskInput): Pro
       sortOrder: await nextSortOrder(tx, date, parentId),
     })
     .returning();
-  return toTask(row);
+  if (!row.priorityId) return toTask(row);
+  await resortByPriorityTx(tx, row.id);
+  return toTask((await getTask(row.id, tx))!);
 }
 
 /** Ids of a task and all of its descendants. */
@@ -175,7 +178,85 @@ export async function updateTaskTx(
     .set({ ...fields, updatedAt: new Date() })
     .where(eq(tasks.id, id))
     .returning();
-  return { task: toTask(row), movedIds };
+  if (patch.priorityId === undefined) return { task: toTask(row), movedIds };
+  // A new priority sorts the task among its siblings once (urgent first, none last).
+  await resortByPriorityTx(tx, id);
+  return { task: toTask((await getTask(id, tx))!), movedIds };
+}
+
+/** Siblings in display order: children of `parentId`, or top-level tasks of `date`. */
+async function siblingRows(tx: Transaction, date: string, parentId: string | null) {
+  return tx
+    .select()
+    .from(tasks)
+    .where(parentId ? eq(tasks.parentId, parentId) : and(eq(tasks.date, date), isNull(tasks.parentId)))
+    .orderBy(asc(tasks.sortOrder), asc(tasks.createdAt));
+}
+
+/** Writes sort orders 0…n for the given ids, touching only rows that change. */
+async function writeOrder(tx: Transaction, rows: { id: string; sortOrder: number }[], orderedIds: string[]) {
+  const current = new Map(rows.map((r) => [r.id, r.sortOrder]));
+  for (const [index, id] of orderedIds.entries()) {
+    if (current.get(id) !== index) await tx.update(tasks).set({ sortOrder: index }).where(eq(tasks.id, id));
+  }
+}
+
+/** Sorts a task's sibling group by priority, keeping the order among equal priorities. */
+export async function resortByPriorityTx(tx: Transaction, taskId: string): Promise<void> {
+  const task = await getTask(taskId, tx);
+  if (!task) return;
+  const [rows, labelRows] = await Promise.all([
+    siblingRows(tx, task.date, task.parentId),
+    tx.select({ id: priorities.id }).from(priorities).orderBy(asc(priorities.sortOrder), asc(priorities.createdAt)),
+  ]);
+  const order = priorityOrder(rows.map(toTask), labelRows.map((l) => l.id));
+  await writeOrder(tx, rows, order);
+}
+
+export async function moveTask(id: string, to: MoveTarget): Promise<Task> {
+  return getDb().transaction((tx) => moveTaskTx(tx, id, to));
+}
+
+/**
+ * Moves a task (with its sub-notes) under a new parent — or to the top level
+ * of a day — at a position among its new siblings. Enforces the depth limit.
+ */
+export async function moveTaskTx(tx: Transaction, id: string, to: MoveTarget): Promise<Task> {
+  const current = await getTask(id, tx);
+  if (!current) throw notFound();
+  const ids = await subtreeIds(tx, id);
+
+  let date = to.date;
+  let depth = 0;
+  if (to.parentId) {
+    if (ids.includes(to.parentId)) throw new HttpError(400, "A task can't be moved into its own sub-notes.");
+    const parent = await getTask(to.parentId, tx);
+    if (!parent) throw notFound("Parent task");
+    date = parent.date;
+    depth = parent.depth + 1;
+  }
+  const [{ deepest }] = await tx
+    .select({ deepest: sql<number>`max(${tasks.depth})::int` })
+    .from(tasks)
+    .where(inArray(tasks.id, ids));
+  if (depth + (deepest - current.depth) > MAX_DEPTH) throw new DepthLimitError();
+
+  // One statement, so the "top-level ⇔ depth 0" check holds for every row.
+  await tx
+    .update(tasks)
+    .set({
+      date,
+      depth: sql`${tasks.depth} - ${current.depth} + ${depth}`,
+      parentId: sql`case when ${tasks.id} = ${id} then ${to.parentId}::uuid else ${tasks.parentId} end`,
+      updatedAt: new Date(),
+    })
+    .where(inArray(tasks.id, ids));
+
+  const rows = (await siblingRows(tx, date, to.parentId)).filter((r) => r.id !== id);
+  const order = rows.map((r) => r.id);
+  order.splice(Math.max(0, Math.min(to.index, order.length)), 0, id);
+  await writeOrder(tx, [...rows, { id, sortOrder: -1 }], order);
+  return toTask((await getTask(id, tx))!);
 }
 
 /** Deletes a task and (via ON DELETE CASCADE) all its sub-notes. */

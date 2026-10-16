@@ -274,14 +274,27 @@ week and briefly highlights it.
 **Tasks.**
 - **Add:** use **+ Add task** under a day. Press Enter to add, and keep typing
   for the next one.
-- **Sub-notes:** **⋯ → Add sub-note**, up to three levels below a task.
+- **Sub-notes:** **⋯ → Add sub-note**, up to three levels below a task. Once
+  a task has sub-notes, an **+ Add sub-note** button also appears at the end
+  of them. **+ Add task** under a day always adds a top-level task to that day.
 - **Rename:** double-click the title (double-tap on touch). Enter saves, Esc
   cancels, clicking away saves.
-- **Status and priority:** tap a colored pill to change it.
+- **Status and priority:** tap a colored pill to change it. Choosing a
+  priority sorts the task among its siblings once: Urgent at the top, Low and
+  no priority at the bottom. Nothing stays locked, so you can drag it
+  elsewhere afterwards. Priorities set by the voice assistant sort the same
+  way.
 - **⋯ menu:** add details, move up/down, move to another day, or delete.
   Deleting a task also deletes its sub-notes, and the confirmation says so.
-- **Drag:** on a computer, use the grip that appears on hover to drag a task
-  within its list.
+- **Drag:** move a task, together with its sub-notes, anywhere.
+  - On a computer, drag the grip that appears on hover. On a phone,
+    long-press the task (about half a second), then drag.
+  - Drop on the upper or lower part of a task to place it before or after
+    it, on the middle to make it a sub-note, or on a day's row to move it to
+    that day.
+  - Near the top or bottom of the screen the page scrolls. Esc cancels.
+  - Drops that would nest too deep, or into the task's own sub-notes, aren't
+    offered.
 - Changes appear instantly and are rolled back with a message if saving fails.
 
 **Keyboard.**

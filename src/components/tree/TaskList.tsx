@@ -1,7 +1,8 @@
 "use client";
 
-import { Reorder, useDragControls } from "motion/react";
-import { memo, useCallback, useMemo, useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { beginDrag, useDrag, useLongPress } from "@/client/dnd";
 import { useDoubleActivate, useFinePointer } from "@/client/hooks";
 import { isTempId, usePlanner } from "@/client/planner-store";
 import { taskKey, useUi } from "@/client/ui-store";
@@ -18,33 +19,17 @@ const EMPTY: Task[] = [];
 /** Left padding for content at a given task depth (depth 0 = top-level task). */
 const indentFor = (depth: number) => `calc(var(--tree-indent) * ${depth + 2} + 8px)`;
 
-/** Siblings under one parent; reorderable by drag on mouse/trackpad, via the menu everywhere. */
+/** Siblings under one parent. Tasks can be dragged anywhere (see client/dnd.ts) or moved via the menu. */
 export function TaskList({ date, parentId, depth }: { date: string; parentId: string | null; depth: number }) {
   const all = usePlanner((s) => s.tasksByDate[date] ?? EMPTY);
-  const reorderSiblings = usePlanner((s) => s.reorderSiblings);
   const siblings = useMemo(() => childrenOf(all, parentId), [all, parentId]);
-  const ids = useMemo(() => siblings.map((t) => t.id), [siblings]);
-  const [dragOrder, setDragOrder] = useState<string[] | null>(null);
-  const order = dragOrder ?? ids;
-  const byId = useMemo(() => new Map(siblings.map((t) => [t.id, t])), [siblings]);
-
-  const commitDrag = useCallback(() => {
-    if (dragOrder && dragOrder.join() !== ids.join() && dragOrder.length === ids.length) {
-      void reorderSiblings(date, parentId, dragOrder);
-    }
-    setDragOrder(null);
-  }, [dragOrder, ids, date, parentId, reorderSiblings]);
-
   if (siblings.length === 0) return null;
   return (
-    <Reorder.Group as="ul" role="group" axis="y" values={order} onReorder={setDragOrder}>
-      {order.map((id) => {
-        const task = byId.get(id);
-        return task ? (
-          <TaskItem key={id} task={task} siblings={siblings} depth={depth} onDragEnd={commitDrag} />
-        ) : null;
-      })}
-    </Reorder.Group>
+    <ul role="group">
+      {siblings.map((task) => (
+        <TaskItem key={task.id} task={task} siblings={siblings} depth={depth} />
+      ))}
+    </ul>
   );
 }
 
@@ -52,10 +37,9 @@ interface TaskItemProps {
   task: Task;
   siblings: Task[];
   depth: number;
-  onDragEnd: () => void;
 }
 
-const TaskItem = memo(function TaskItem({ task, siblings, depth, onDragEnd }: TaskItemProps) {
+const TaskItem = memo(function TaskItem({ task, siblings, depth }: TaskItemProps) {
   const key = taskKey(task.id);
   const hasChildren = usePlanner((s) => (s.tasksByDate[task.date] ?? EMPTY).some((t) => t.parentId === task.id));
   const expanded = useUi((s) => !s.collapsedTasks[task.id]);
@@ -64,7 +48,9 @@ const TaskItem = memo(function TaskItem({ task, siblings, depth, onDragEnd }: Ta
   const setTaskExpanded = useUi((s) => s.setTaskExpanded);
   const { updateTask, deleteTask, createTask, reorderSiblings } = usePlanner.getState();
   const finePointer = useFinePointer();
-  const dragControls = useDragControls();
+  const reduceMotion = useReducedMotion();
+  const rowRef = useRef<HTMLDivElement>(null);
+  const isDragged = useDrag((s) => s.active?.id === task.id);
 
   const [renaming, setRenaming] = useState(false);
   const [editingDescription, setEditingDescription] = useState(false);
@@ -79,6 +65,11 @@ const TaskItem = memo(function TaskItem({ task, siblings, depth, onDragEnd }: Ta
     if (!pending) setRenaming(true);
   }, [pending]);
   const doubleActivate = useDoubleActivate(startRename, !pending && !renaming);
+  const canDrag = !pending && !renaming && !editingDescription;
+  const startDrag = (point: { x: number; y: number }, input: "mouse" | "touch") => {
+    if (canDrag && rowRef.current) beginDrag(task.id, task.title, rowRef.current, point, input);
+  };
+  const longPress = useLongPress((point) => startDrag(point, "touch"));
 
   const requestDelete = async () => {
     const all = usePlanner.getState().tasksByDate[task.date] ?? EMPTY;
@@ -121,13 +112,9 @@ const TaskItem = memo(function TaskItem({ task, siblings, depth, onDragEnd }: Ta
   };
 
   return (
-    <Reorder.Item
-      value={task.id}
-      as="li"
-      layout="position"
-      dragListener={false}
-      dragControls={dragControls}
-      onDragEnd={onDragEnd}
+    <motion.li
+      layout={reduceMotion ? false : "position"}
+      transition={{ layout: { type: "spring", bounce: 0, duration: 0.35 } }}
       role="treeitem"
       aria-level={5 + task.depth}
       aria-expanded={showChildren ? expanded : undefined}
@@ -140,22 +127,32 @@ const TaskItem = memo(function TaskItem({ task, siblings, depth, onDragEnd }: Ta
       id={`task-${task.id}`}
       onKeyDown={onKeyDown}
       onFocus={(e) => e.target === e.currentTarget && setActive(key)}
-      className="relative scroll-mt-[calc(env(safe-area-inset-top)+68px)] bg-surface outline-none"
+      className={`relative scroll-mt-[calc(env(safe-area-inset-top)+68px)] bg-surface outline-none transition-opacity ${
+        isDragged ? "opacity-40" : ""
+      }`}
     >
       <div
-        className={`tree-row group relative flex items-start pr-1 ${pending ? "opacity-60" : ""}`}
+        ref={rowRef}
+        data-drop="task"
+        data-task-id={task.id}
+        data-children-visible={showChildren && expanded}
+        {...(canDrag ? longPress : {})}
+        className={`tree-row group relative flex select-none items-start pr-1 [-webkit-touch-callout:none] ${
+          pending ? "opacity-60" : ""
+        }`}
         style={{ paddingLeft: indentFor(task.depth) }}
       >
         <FlashOverlay nodeKey={key} />
         {finePointer && !pending && (
           <span
             onPointerDown={(e) => {
+              if (e.button !== 0) return;
               e.preventDefault();
-              dragControls.start(e);
+              startDrag({ x: e.clientX, y: e.clientY }, "mouse");
             }}
             className="absolute top-3 flex h-5 w-4 cursor-grab touch-none items-center justify-center text-label-3 opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
             style={{ left: `calc(${indentFor(task.depth)} - 18px)` }}
-            title="Drag to reorder"
+            title="Drag to move"
             aria-hidden="true"
           >
             <Grip size={14} />
@@ -249,6 +246,18 @@ const TaskItem = memo(function TaskItem({ task, siblings, depth, onDragEnd }: Ta
             {/* centre of this task's 28px chevron button */}
             <GuideLine left={`calc(${indentFor(task.depth)} + 13.5px)`} />
             <TaskList date={task.date} parentId={task.id} depth={depth + 1} />
+            {hasChildren && allowChild && !addingChild && (
+              <div style={{ paddingLeft: indentFor(task.depth + 1) }}>
+                <button
+                  type="button"
+                  onClick={startAddChild}
+                  className="pressable -ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 text-[14px] text-accent hover:bg-accent-tint"
+                >
+                  <Plus size={15} />
+                  Add sub-note
+                </button>
+              </div>
+            )}
             {addingChild && allowChild && (
               <div style={{ paddingLeft: indentFor(task.depth + 1) }}>
                 <AddTaskInput
@@ -272,7 +281,7 @@ const TaskItem = memo(function TaskItem({ task, siblings, depth, onDragEnd }: Ta
           if (date !== task.date) void updateTask(task.id, { date });
         }}
       />
-    </Reorder.Item>
+    </motion.li>
   );
 });
 

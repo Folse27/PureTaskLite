@@ -137,6 +137,14 @@ body {
   transition: background-color 250ms ease, color 250ms ease;
 }
 
+/* While a task is being dragged. */
+html.dragging-task,
+html.dragging-task * {
+  cursor: grabbing !important;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* Visible keyboard focus everywhere; never on mouse/touch. */
 :focus-visible {
   outline: 2px solid var(--accent);

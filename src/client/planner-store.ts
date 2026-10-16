@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { daysOfWeek, weekEnd, weekStartOf } from "@/lib/dates";
-import { applyOrder, countTopLevel, subtreeIds } from "@/lib/task-tree";
+import { applyMove, applyOrder, countTopLevel, resortByPriority, subtreeIds, type MoveTarget } from "@/lib/task-tree";
 import type { Label, LabelKind, Task, TaskPatch } from "@/lib/types";
 import { api, ApiError } from "./api";
 import { toast } from "./toast-store";
@@ -34,6 +34,8 @@ interface PlannerState {
   updateTask: (id: string, patch: TaskPatch) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   reorderSiblings: (date: string, parentId: string | null, orderedIds: string[]) => Promise<void>;
+  /** Move a task (with its sub-notes) to another parent, day or position. */
+  moveTask: (id: string, to: MoveTarget) => Promise<void>;
 
   createLabel: (kind: LabelKind, name: string, color: string) => Promise<Label | null>;
   updateLabel: (kind: LabelKind, id: string, patch: { name?: string; color?: string }) => Promise<void>;
@@ -197,11 +199,12 @@ export const usePlanner = create<PlannerState>((set, get) => {
         (s) => {
           const list = s.tasksByDate[current.date] ?? [];
           if (!moving) {
-            return setDate(
-              s,
-              current.date,
-              list.map((t) => (t.id === id ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t)),
-            );
+            let updated = list.map((t) => (t.id === id ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t));
+            // A new priority sorts the task among its siblings once (mirrors the server).
+            if (patch.priorityId !== undefined) {
+              updated = resortByPriority(updated, id, s.priorities.map((p) => p.id));
+            }
+            return setDate(s, current.date, updated);
           }
           // Move the task and its sub-notes; the task becomes top-level on the new day.
           const ids = subtreeIds(list, id);
@@ -249,6 +252,29 @@ export const usePlanner = create<PlannerState>((set, get) => {
         (s) => setDate(s, date, applyOrder(s.tasksByDate[date] ?? [], orderedIds)),
         () => api("/api/tasks/reorder", { body: { date, parentId, orderedIds } }),
         "Couldn't save the new order.",
+      );
+    },
+
+    moveTask: async (id, to) => {
+      const current = findTask(get(), id);
+      if (!current) return;
+      const parent = to.parentId ? findTask(get(), to.parentId) : undefined;
+      const targetDate = parent?.date ?? to.date;
+      await optimistic(
+        (s) => {
+          const source = s.tasksByDate[current.date] ?? [];
+          const target = targetDate === current.date ? [] : (s.tasksByDate[targetDate] ?? []);
+          const moved = applyMove([...source, ...target], id, { ...to, date: targetDate });
+          const tasksByDate = { ...s.tasksByDate, [current.date]: moved.filter((t) => t.date === current.date) };
+          const counts = { ...s.counts };
+          if (targetDate !== current.date) {
+            if (s.tasksByDate[targetDate]) tasksByDate[targetDate] = moved.filter((t) => t.date === targetDate);
+            else if (!to.parentId) counts[targetDate] = (counts[targetDate] ?? 0) + 1;
+          }
+          return { tasksByDate, counts };
+        },
+        () => api("/api/tasks/move", { body: { id, parentId: to.parentId, date: targetDate, index: to.index } }),
+        "Couldn't move the task.",
       );
     },
 

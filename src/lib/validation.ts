@@ -39,6 +39,13 @@ export const reorderTasksInput = z.object({
   orderedIds: z.array(id).min(1).max(1000),
 });
 
+export const moveTaskInput = z.object({
+  id,
+  parentId: id.nullable(),
+  date: isoDate,
+  index: z.number().int().min(0).max(10_000),
+});
+
 export const createLabelInput = z.object({ name: labelName, color });
 export const updateLabelInput = z
   .object({ name: labelName.optional(), color: color.optional() })

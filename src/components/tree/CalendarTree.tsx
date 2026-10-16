@@ -188,6 +188,7 @@ function DayNode({ date, ctx }: { date: string; ctx: Ctx }) {
       rowStyle={{ paddingLeft: "calc(var(--tree-indent) + 12px)" }}
       bareChildren
       guide="calc(var(--tree-indent) + 18.5px)" // centre of the day chevron (14px icon)
+      rowData={{ "data-drop": "day", "data-date": date }} // drop a dragged task here to move it to this day
       row={
         <>
           <Chevron open={expanded} size={14} />

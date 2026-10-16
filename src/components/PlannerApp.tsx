@@ -14,6 +14,7 @@ import { AssistantDock } from "./AssistantDock";
 import { CalendarToday, Gear, Moon, Sun } from "./icons";
 import { SettingsSheet } from "./SettingsSheet";
 import { CalendarTree } from "./tree/CalendarTree";
+import { DragLayer } from "./tree/DragLayer";
 import { ConfirmHost } from "./ui/ConfirmHost";
 import { Toaster } from "./ui/Toaster";
 
@@ -72,6 +73,7 @@ export function PlannerApp({ initial }: { initial: InitialData }) {
       </main>
       <AssistantDock today={today} />
       <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <DragLayer />
       <ConfirmHost />
       <Toaster />
     </div>

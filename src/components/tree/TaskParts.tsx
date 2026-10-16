@@ -92,7 +92,7 @@ export function TitleEditor({ initial, onDone }: { initial: string; onDone: (tit
       aria-label="Task title"
       maxLength={500}
       enterKeyHint="done"
-      className="-mx-1.5 h-[30px] min-w-0 flex-1 basis-full rounded-md bg-surface px-1.5 text-[15px] text-label outline-none ring-2 ring-accent"
+      className="-mx-1.5 h-[30px] min-w-0 flex-1 basis-full select-text rounded-md bg-surface px-1.5 text-[15px] text-label outline-none ring-2 ring-accent"
     />
   );
 }
@@ -124,7 +124,7 @@ export function DescriptionEditor({ initial, onDone }: { initial: string; onDone
       aria-label="Details"
       maxLength={5000}
       rows={3}
-      className="mt-1.5 block min-h-[72px] w-full resize-y rounded-lg bg-fill px-3 py-2 text-[14px] leading-[20px] text-label outline-none [field-sizing:content] placeholder:text-label-3 focus:ring-2 focus:ring-accent"
+      className="mt-1.5 block min-h-[72px] w-full select-text resize-y rounded-lg bg-fill px-3 py-2 text-[14px] leading-[20px] text-label outline-none [field-sizing:content] placeholder:text-label-3 focus:ring-2 focus:ring-accent"
     />
   );
 }

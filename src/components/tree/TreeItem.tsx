@@ -59,6 +59,8 @@ interface DateTreeItemProps {
   bareChildren?: boolean;
   /** Horizontal position of the guide line (the centre of this row's chevron). */
   guide?: string;
+  /** Extra data attributes for the row (e.g. drop targets). */
+  rowData?: Record<string, string>;
   children: ReactNode;
 }
 
@@ -76,6 +78,7 @@ export function DateTreeItem({
   groupClassName,
   bareChildren,
   guide,
+  rowData,
   children,
 }: DateTreeItemProps) {
   const tabStop = useUi((s) => s.activeKey === nodeKey || (s.activeKey === null && !!defaultTabStop));
@@ -95,6 +98,7 @@ export function DateTreeItem({
       className="scroll-mt-[calc(env(safe-area-inset-top)+68px)] outline-none"
     >
       <div
+        {...rowData}
         className={`tree-row relative flex min-h-11 cursor-pointer select-none items-center gap-2 ${rowClassName}`}
         style={rowStyle}
         onClick={() => {
