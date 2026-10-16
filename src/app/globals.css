@@ -17,6 +17,8 @@
   --label-2: #6c6c70;
   --label-3: #8e8e93;
   --separator: rgb(60 60 67 / 0.16);
+  /* Vertical guide lines that tie a group's items to their parent row. */
+  --guide: rgb(60 60 67 / 0.22);
   --fill: rgb(120 120 128 / 0.12);
   --fill-strong: rgb(120 120 128 / 0.2);
   --accent: #0071e3;
@@ -30,14 +32,14 @@
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06);
   --shadow-lg: 0 12px 40px rgb(0 0 0 / 0.16), 0 2px 8px rgb(0 0 0 / 0.08);
   /* Tree indentation step: tighter on phones so deep sub-notes keep room for text. */
-  --tree-indent: 14px;
+  --tree-indent: 18px;
   --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI",
     system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 @media (min-width: 640px) {
   :root {
-    --tree-indent: 18px;
+    --tree-indent: 26px;
   }
 }
 
@@ -52,6 +54,7 @@
     --label-2: #aeaeb2;
     --label-3: #8d8d93;
     --separator: rgb(84 84 88 / 0.55);
+    --guide: rgb(120 120 128 / 0.42);
     --fill: rgb(120 120 128 / 0.24);
     --fill-strong: rgb(120 120 128 / 0.36);
     --accent: #0a84ff;
@@ -77,6 +80,7 @@
   --label-2: #aeaeb2;
   --label-3: #8d8d93;
   --separator: rgb(84 84 88 / 0.55);
+  --guide: rgb(120 120 128 / 0.42);
   --fill: rgb(120 120 128 / 0.24);
   --fill-strong: rgb(120 120 128 / 0.36);
   --accent: #0a84ff;
@@ -100,6 +104,7 @@
   --color-label-2: var(--label-2);
   --color-label-3: var(--label-3);
   --color-separator: var(--separator);
+  --color-guide: var(--guide);
   --color-fill: var(--fill);
   --color-fill-strong: var(--fill-strong);
   --color-accent: var(--accent);

@@ -12,6 +12,14 @@ export function FlashOverlay({ nodeKey }: { nodeKey: string }) {
   return <span key={nonce} className="flash pointer-events-none absolute inset-0 rounded-[10px]" aria-hidden="true" />;
 }
 
+/**
+ * Thin vertical line under a parent row's chevron, running alongside its
+ * children, so it's obvious at a glance which items belong to the same group.
+ */
+export function GuideLine({ left }: { left: string }) {
+  return <span aria-hidden="true" className="pointer-events-none absolute bottom-2 top-0 z-[1] w-px bg-guide" style={{ left }} />;
+}
+
 export function Chevron({ open, size = 16 }: { open: boolean; size?: number }) {
   return (
     <ChevronRight
@@ -49,6 +57,8 @@ interface DateTreeItemProps {
   groupClassName?: string;
   /** Render children directly (they bring their own role="group" list). */
   bareChildren?: boolean;
+  /** Horizontal position of the guide line (the centre of this row's chevron). */
+  guide?: string;
   children: ReactNode;
 }
 
@@ -65,6 +75,7 @@ export function DateTreeItem({
   rowStyle,
   groupClassName,
   bareChildren,
+  guide,
   children,
 }: DateTreeItemProps) {
   const tabStop = useUi((s) => s.activeKey === nodeKey || (s.activeKey === null && !!defaultTabStop));
@@ -95,13 +106,16 @@ export function DateTreeItem({
         {row}
       </div>
       <Collapsible open={expanded}>
-        {bareChildren ? (
-          children
-        ) : (
-          <ul role="group" className={groupClassName}>
-            {children}
-          </ul>
-        )}
+        <div className="relative">
+          {guide && <GuideLine left={guide} />}
+          {bareChildren ? (
+            children
+          ) : (
+            <ul role="group" className={groupClassName}>
+              {children}
+            </ul>
+          )}
+        </div>
       </Collapsible>
     </li>
   );

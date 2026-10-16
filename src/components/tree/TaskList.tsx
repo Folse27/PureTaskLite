@@ -12,7 +12,7 @@ import { Grip, Plus } from "../icons";
 import { Collapsible } from "../ui/Collapsible";
 import { confirmAction } from "../ui/ConfirmHost";
 import { AddTaskInput, DescriptionEditor, LabelPill, MoveTaskDialog, TaskMenu, TitleEditor } from "./TaskParts";
-import { Chevron, FlashOverlay } from "./TreeItem";
+import { Chevron, FlashOverlay, GuideLine } from "./TreeItem";
 
 const EMPTY: Task[] = [];
 /** Left padding for content at a given task depth (depth 0 = top-level task). */
@@ -245,16 +245,20 @@ const TaskItem = memo(function TaskItem({ task, siblings, depth, onDragEnd }: Ta
 
       {showChildren && (
         <Collapsible open={expanded}>
-          <TaskList date={task.date} parentId={task.id} depth={depth + 1} />
-          {addingChild && allowChild && (
-            <div style={{ paddingLeft: indentFor(task.depth + 1) }}>
-              <AddTaskInput
-                placeholder="New sub-note"
-                onSubmit={(title) => void createTask({ date: task.date, title, parentId: task.id })}
-                onClose={() => setAddingChild(false)}
-              />
-            </div>
-          )}
+          <div className="relative">
+            {/* centre of this task's 28px chevron button */}
+            <GuideLine left={`calc(${indentFor(task.depth)} + 13.5px)`} />
+            <TaskList date={task.date} parentId={task.id} depth={depth + 1} />
+            {addingChild && allowChild && (
+              <div style={{ paddingLeft: indentFor(task.depth + 1) }}>
+                <AddTaskInput
+                  placeholder="New sub-note"
+                  onSubmit={(title) => void createTask({ date: task.date, title, parentId: task.id })}
+                  onClose={() => setAddingChild(false)}
+                />
+              </div>
+            )}
+          </div>
         </Collapsible>
       )}
 

@@ -144,6 +144,7 @@ function WeekNode({ monday, ctx, divider }: { monday: string; ctx: Ctx; divider:
         divider ? "border-t border-separator" : ""
       }`}
       groupClassName="pb-2"
+      guide="19.5px" // centre of the week chevron (12px padding + 16px icon)
       row={
         <>
           {current && <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-accent" aria-hidden="true" />}
@@ -186,6 +187,7 @@ function DayNode({ date, ctx }: { date: string; ctx: Ctx }) {
       rowClassName="pr-4 hover:bg-fill"
       rowStyle={{ paddingLeft: "calc(var(--tree-indent) + 12px)" }}
       bareChildren
+      guide="calc(var(--tree-indent) + 18.5px)" // centre of the day chevron (14px icon)
       row={
         <>
           <Chevron open={expanded} size={14} />
