@@ -45,3 +45,6 @@ next-env.d.ts
 .claude/
 .vscode/
 skills-lock.json
+
+# Local diagrams (not part of the app)
+/voice-assistant-flow.png
