@@ -1,0 +1,7 @@
+# Generated or not ours to format
+drizzle/
+package-lock.json
+next-env.d.ts
+.next/
+coverage/
+*.md
