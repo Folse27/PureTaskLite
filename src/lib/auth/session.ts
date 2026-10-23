@@ -16,13 +16,10 @@ const keyCache = new Map<string, Promise<CryptoKey>>();
 function importKey(secret: string): Promise<CryptoKey> {
   let key = keyCache.get(secret);
   if (!key) {
-    key = crypto.subtle.importKey(
-      "raw",
-      encoder.encode(secret),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign", "verify"],
-    );
+    key = crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [
+      "sign",
+      "verify",
+    ]);
     keyCache.set(secret, key);
   }
   return key;

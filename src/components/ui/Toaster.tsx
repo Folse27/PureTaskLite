@@ -29,7 +29,11 @@ export function Toaster() {
             transition={SPRING}
             className="material-thick pointer-events-auto max-w-md rounded-2xl border border-separator px-4 py-3 text-left text-[14px] font-medium leading-snug shadow-float"
           >
-            {t.tone === "error" && <span className="mr-1.5 text-danger" aria-hidden="true">●</span>}
+            {t.tone === "error" && (
+              <span className="mr-1.5 text-danger" aria-hidden="true">
+                ●
+              </span>
+            )}
             {t.message}
           </motion.button>
         ))}

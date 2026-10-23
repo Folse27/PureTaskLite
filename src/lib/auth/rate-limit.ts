@@ -47,9 +47,7 @@ export interface RateLimitStore {
   clearFailures(ipHash: string): Promise<void>;
 }
 
-export type LimitResult =
-  | { limited: false }
-  | { limited: true; scope: "ip" | "global"; retryAfterSeconds: number };
+export type LimitResult = { limited: false } | { limited: true; scope: "ip" | "global"; retryAfterSeconds: number };
 
 export function lockoutDurationMs(level: number): number {
   const exponent = Math.max(0, level - 1);
@@ -100,8 +98,7 @@ export class LoginRateLimiter {
     let result: LimitResult = { limited: false };
 
     if (ipFailures >= RATE_LIMIT.ipMaxFailures) {
-      const escalate =
-        previous != null && now.getTime() - previous.lockedUntil.getTime() < RATE_LIMIT.levelResetMs;
+      const escalate = previous != null && now.getTime() - previous.lockedUntil.getTime() < RATE_LIMIT.levelResetMs;
       const level = escalate ? previous.level + 1 : 1;
       const lock = { lockedUntil: new Date(now.getTime() + lockoutDurationMs(level)), level };
       await this.store.setLock(ipKey(ipHash), lock);

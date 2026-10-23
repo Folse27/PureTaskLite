@@ -8,7 +8,11 @@ type OrderedTable = typeof schema.tasks | typeof schema.statuses | typeof schema
  * Sets sort_order = position for every id in one UPDATE … FROM (VALUES …)
  * statement, touching only rows whose order actually changes.
  */
-export async function setSortOrders(tx: Transaction, table: OrderedTable, orderedIds: readonly string[]): Promise<void> {
+export async function setSortOrders(
+  tx: Transaction,
+  table: OrderedTable,
+  orderedIds: readonly string[],
+): Promise<void> {
   if (orderedIds.length === 0) return;
   const values = sql.join(
     orderedIds.map((id, index) => sql`(${id}::uuid, ${index}::int)`),

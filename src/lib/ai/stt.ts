@@ -37,7 +37,14 @@ export function isPromptEcho(transcript: string, prompt: string): boolean {
 
 export function transcriptFrom(result: WhisperResult, prompt = ""): string {
   const segments = result.segments ?? [];
-  const text = (segments.length > 0 ? segments.filter((s) => !isSilentSegment(s)).map((s) => s.text).join("") : (result.text ?? "")).trim();
+  const text = (
+    segments.length > 0
+      ? segments
+          .filter((s) => !isSilentSegment(s))
+          .map((s) => s.text)
+          .join("")
+      : (result.text ?? "")
+  ).trim();
   return prompt && isPromptEcho(text, prompt) ? "" : text;
 }
 

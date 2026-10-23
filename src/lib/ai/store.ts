@@ -45,7 +45,12 @@ export async function loadSnapshot(today: string, labels: Labels): Promise<strin
     ? await db
         .selectDistinct({ id: tasks.parentId })
         .from(tasks)
-        .where(inArray(tasks.parentId, outside.map((t) => t.id)))
+        .where(
+          inArray(
+            tasks.parentId,
+            outside.map((t) => t.id),
+          ),
+        )
     : [];
 
   return renderSnapshot({
@@ -112,7 +117,9 @@ export async function loadRanges(
     const { tasks: found, note } = fitForContext(await listTasks(range.from, range.to));
     all.push(...found);
     const lines = renderTasksByDate(found, today, labels);
-    sections.push(`${range.label} (${range.from} – ${range.to}):\n${lines.length ? lines.join("\n") : "(no tasks)"}${note}`);
+    sections.push(
+      `${range.label} (${range.from} – ${range.to}):\n${lines.length ? lines.join("\n") : "(no tasks)"}${note}`,
+    );
   }
   return { text: sections.join("\n\n"), tasks: all };
 }

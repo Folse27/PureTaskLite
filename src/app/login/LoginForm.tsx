@@ -68,7 +68,16 @@ export function LoginForm({ next }: { next: string }) {
           className="mb-5 flex size-[72px] items-center justify-center rounded-[18px] bg-accent-fill text-white shadow-float"
           aria-hidden="true"
         >
-          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="38"
+            height="38"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <rect x="3.5" y="5" width="17" height="15.5" rx="3" />
             <path d="M3.5 10h17M8 3v4M16 3v4M8.5 15l2.2 2.2L15.5 13" />
           </svg>
@@ -96,7 +105,12 @@ export function LoginForm({ next }: { next: string }) {
         className="h-[50px] w-full rounded-xl bg-surface px-4 text-[17px] text-label shadow-soft outline-none ring-1 ring-separator placeholder:text-label-3 focus:ring-2 focus:ring-accent disabled:opacity-60"
       />
 
-      <p id="login-message" role="alert" aria-live="assertive" className="min-h-[44px] px-1 pt-2.5 text-[14px] leading-snug text-danger">
+      <p
+        id="login-message"
+        role="alert"
+        aria-live="assertive"
+        className="min-h-[44px] px-1 pt-2.5 text-[14px] leading-snug text-danger"
+      >
         {error}
         {locked && (
           <>

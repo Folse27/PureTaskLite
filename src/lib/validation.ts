@@ -5,7 +5,12 @@ import { isISODate } from "./dates";
 export const isoDate = z.string().refine(isISODate, "Expected a date in YYYY-MM-DD format.");
 export const id = z.uuid();
 export const title = z.string().trim().min(1, "Title can't be empty.").max(500);
-export const description = z.string().trim().max(5000).nullable().transform((v) => v || null);
+export const description = z
+  .string()
+  .trim()
+  .max(5000)
+  .nullable()
+  .transform((v) => v || null);
 export const labelName = z.string().trim().min(1, "Name can't be empty.").max(40);
 export const color = z.string().regex(HEX_COLOR_RE, "Expected a hex color like #FF9500.");
 export const labelKind = z.enum(["statuses", "priorities"]);

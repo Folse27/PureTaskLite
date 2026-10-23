@@ -26,11 +26,7 @@ interface PlannerState {
   loadWeek: (monday: string, force?: boolean) => Promise<void>;
   refresh: () => Promise<void>;
 
-  createTask: (input: {
-    date: string;
-    title: string;
-    parentId?: string | null;
-  }) => Promise<void>;
+  createTask: (input: { date: string; title: string; parentId?: string | null }) => Promise<void>;
   updateTask: (id: string, patch: TaskPatch) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   reorderSiblings: (date: string, parentId: string | null, orderedIds: string[]) => Promise<void>;
@@ -202,7 +198,11 @@ export const usePlanner = create<PlannerState>((set, get) => {
             let updated = list.map((t) => (t.id === id ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t));
             // A new priority sorts the task among its siblings once (mirrors the server).
             if (patch.priorityId !== undefined) {
-              updated = resortByPriority(updated, id, s.priorities.map((p) => p.id));
+              updated = resortByPriority(
+                updated,
+                id,
+                s.priorities.map((p) => p.id),
+              );
             }
             return setDate(s, current.date, updated);
           }
@@ -240,7 +240,11 @@ export const usePlanner = create<PlannerState>((set, get) => {
         (s) => {
           const list = s.tasksByDate[current.date] ?? [];
           const ids = subtreeIds(list, id);
-          return setDate(s, current.date, list.filter((t) => !ids.has(t.id)));
+          return setDate(
+            s,
+            current.date,
+            list.filter((t) => !ids.has(t.id)),
+          );
         },
         () => api(`/api/tasks/${id}`, { method: "DELETE" }),
         "Couldn't delete the task.",

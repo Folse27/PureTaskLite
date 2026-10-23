@@ -77,7 +77,10 @@ function findTarget(x: number, y: number, draggedId: string): DropTarget | null 
   const target = findTask(state, targetId);
   const dragged = findTask(state, draggedId);
   if (!target || !dragged) return null;
-  const list = [...(state.tasksByDate[dragged.date] ?? []), ...(target.date !== dragged.date ? (state.tasksByDate[target.date] ?? []) : [])];
+  const list = [
+    ...(state.tasksByDate[dragged.date] ?? []),
+    ...(target.date !== dragged.date ? (state.tasksByDate[target.date] ?? []) : []),
+  ];
   if (subtreeIds(list, draggedId).has(targetId)) return null; // onto itself or its own sub-notes
 
   const rel = (y - rect.top) / rect.height;
@@ -160,7 +163,13 @@ function finish(commit: boolean) {
 }
 
 /** Starts dragging a task. `row` is the task's row element; the point is in viewport coordinates. */
-export function beginDrag(taskId: string, title: string, row: HTMLElement, point: { x: number; y: number }, input: "mouse" | "touch") {
+export function beginDrag(
+  taskId: string,
+  title: string,
+  row: HTMLElement,
+  point: { x: number; y: number },
+  input: "mouse" | "touch",
+) {
   if (useDrag.getState().active) return;
   const rect = row.getBoundingClientRect();
   lastPoint = startPoint = point;

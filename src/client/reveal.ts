@@ -40,12 +40,7 @@ async function expandTo(date: string, includeDay: boolean, today: string) {
   const ui = useUi.getState();
   const lastDefault = visibleYears(today).at(-1)!;
   if (year > lastDefault) ui.ensureYearVisible(year - lastDefault);
-  ui.expandMany([
-    yearKey(year),
-    monthKey(year, monthIndex),
-    weekKey(week),
-    ...(includeDay ? [dayKey(date)] : []),
-  ]);
+  ui.expandMany([yearKey(year), monthKey(year, monthIndex), weekKey(week), ...(includeDay ? [dayKey(date)] : [])]);
   await usePlanner.getState().loadWeek(week);
   return week;
 }

@@ -95,9 +95,7 @@ export function applyMove(tasks: readonly Task[], id: string, to: MoveTarget): T
   const moving = subtreeIds(tasks, id);
 
   const moved = tasks.map((t) =>
-    moving.has(t.id)
-      ? { ...t, date, depth: t.depth + delta, ...(t.id === id ? { parentId: to.parentId } : {}) }
-      : t,
+    moving.has(t.id) ? { ...t, date, depth: t.depth + delta, ...(t.id === id ? { parentId: to.parentId } : {}) } : t,
   );
   const inGroup = (t: Task) => t.parentId === to.parentId && (to.parentId !== null || t.date === date);
   const siblings = childrenOf(

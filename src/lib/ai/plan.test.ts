@@ -35,7 +35,17 @@ describe("modelResponseSchema", () => {
     const parsed = modelResponseSchema.parse({
       reply: "Hi",
       operations: [
-        { op: "create", ref: "a", id: null, parent: null, date: "2026-10-12", title: " X ", description: null, status: null, priority: null },
+        {
+          op: "create",
+          ref: "a",
+          id: null,
+          parent: null,
+          date: "2026-10-12",
+          title: " X ",
+          description: null,
+          status: null,
+          priority: null,
+        },
       ],
       lookup: { query: null, from: null, to: null },
     });
@@ -44,7 +54,11 @@ describe("modelResponseSchema", () => {
   });
 
   it("keeps a real lookup", () => {
-    const parsed = modelResponseSchema.parse({ reply: "", operations: [], lookup: { query: "dentist", from: null, to: null } });
+    const parsed = modelResponseSchema.parse({
+      reply: "",
+      operations: [],
+      lookup: { query: "dentist", from: null, to: null },
+    });
     expect(parsed.lookup).toEqual({ query: "dentist", from: undefined, to: undefined });
   });
 });
@@ -68,7 +82,9 @@ describe("planOperations", () => {
     const ops = [
       op({ op: "create", ref: "p", date: "2026-10-12", title: "Finish portfolio website" }),
       op({ op: "create", parent: "p", title: "Create thumbnails" }),
-      ...["12", "13", "14", "15", "16"].map((d) => op({ op: "create", date: `2026-10-${d}`, title: "Help friend with homework" })),
+      ...["12", "13", "14", "15", "16"].map((d) =>
+        op({ op: "create", date: `2026-10-${d}`, title: "Help friend with homework" }),
+      ),
     ];
     const plan = planOperations(ops, ctx);
     expect(plan.problems).toEqual([]);
@@ -78,7 +94,10 @@ describe("planOperations", () => {
 
   it("handles a sub-note listed before its parent", () => {
     const plan = planOperations(
-      [op({ op: "create", parent: "p", title: "Child" }), op({ op: "create", ref: "p", date: "2026-10-12", title: "Parent" })],
+      [
+        op({ op: "create", parent: "p", title: "Child" }),
+        op({ op: "create", ref: "p", date: "2026-10-12", title: "Parent" }),
+      ],
       ctx,
     );
     expect(plan.problems).toEqual([]);
@@ -153,7 +172,10 @@ describe("planOperations", () => {
   });
 
   it("doesn't update a task that is being deleted", () => {
-    const plan = planOperations([op({ op: "update", id: "a1a1a1", title: "X" }), op({ op: "delete", id: "aaaaaa" })], ctx);
+    const plan = planOperations(
+      [op({ op: "update", id: "a1a1a1", title: "X" }), op({ op: "delete", id: "aaaaaa" })],
+      ctx,
+    );
     expect(plan.updates).toEqual([]);
   });
 });

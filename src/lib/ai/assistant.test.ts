@@ -33,7 +33,16 @@ const { GroqError } = await import("./groq");
 const statuses: Label[] = [{ id: "s1", name: "To do", color: "#8E8E93", sortOrder: 0 }];
 const priorities: Label[] = [{ id: "p1", name: "High", color: "#FF9500", sortOrder: 0 }];
 
-const NULLS = { ref: null, id: null, parent: null, date: null, title: null, description: null, status: null, priority: null };
+const NULLS = {
+  ref: null,
+  id: null,
+  parent: null,
+  date: null,
+  title: null,
+  description: null,
+  status: null,
+  priority: null,
+};
 const NO_LOOKUP = { query: null, from: null, to: null };
 const answer = (reply: string, operations: object[] = [], lookup: object = NO_LOOKUP) => ({
   reply,
@@ -43,7 +52,13 @@ const answer = (reply: string, operations: object[] = [], lookup: object = NO_LO
 
 const UUID_A = "aaaaaaaa-0000-4000-8000-000000000001";
 const UUID_B = "bbbbbbbb-0000-4000-8000-000000000002";
-const knownA: KnownTask = { id: UUID_A, title: "Portfolio", date: "2026-10-12", depth: 0, subtreeIds: [UUID_A, "c1", "c2"] };
+const knownA: KnownTask = {
+  id: UUID_A,
+  title: "Portfolio",
+  date: "2026-10-12",
+  depth: 0,
+  subtreeIds: [UUID_A, "c1", "c2"],
+};
 const knownB: KnownTask = { id: UUID_B, title: "Gym", date: "2026-10-13", depth: 0, subtreeIds: [UUID_B] };
 const UUID_C = "cccccccc-0000-4000-8000-000000000003";
 const knownC: KnownTask = { id: UUID_C, title: "Homework", date: "2026-10-14", depth: 0, subtreeIds: [UUID_C] };
@@ -63,10 +78,18 @@ beforeEach(() => {
   // Mimics the real store: creates, then deletes that aren't held for confirmation.
   mocks.executePlan.mockImplementation(
     async (
-      plan: { creates: { title: string; date: string | null }[]; deletes: { id: string; title: string; date: string; count: number }[] },
+      plan: {
+        creates: { title: string; date: string | null }[];
+        deletes: { id: string; title: string; date: string; count: number }[];
+      },
       options: { holdDeleteIds: ReadonlySet<string> },
     ) => [
-      ...plan.creates.map((c, i) => ({ kind: "created", taskId: `${i}0000000-new`, title: c.title, date: c.date ?? "2026-10-12" })),
+      ...plan.creates.map((c, i) => ({
+        kind: "created",
+        taskId: `${i}0000000-new`,
+        title: c.title,
+        date: c.date ?? "2026-10-12",
+      })),
       ...plan.deletes
         .filter((d) => !options.holdDeleteIds.has(d.id))
         .map((d) => ({ kind: "deleted", taskId: d.id, title: d.title, date: d.date, count: d.count })),
@@ -80,7 +103,11 @@ describe("runAssistant", () => {
       answer("Added your portfolio task with a sub-note, and homework help through Friday.", [
         { op: "create", ref: "p", date: "2026-10-12", title: "Finish portfolio website" },
         { op: "create", parent: "p", title: "Create thumbnails" },
-        ...["12", "13", "14", "15", "16"].map((d) => ({ op: "create", date: `2026-10-${d}`, title: "Help friend with homework" })),
+        ...["12", "13", "14", "15", "16"].map((d) => ({
+          op: "create",
+          date: `2026-10-${d}`,
+          title: "Help friend with homework",
+        })),
       ]),
     );
 
@@ -116,14 +143,20 @@ describe("runAssistant", () => {
     mocks.lookupTasks.mockResolvedValueOnce({ text: "LOOKUP-RESULTS", tasks: [] });
     mocks.chatJson
       .mockResolvedValueOnce(answer("", [], { query: "dentist", from: null, to: null }))
-      .mockResolvedValueOnce(answer("Moved the dentist to Friday.", [{ op: "update", id: "bbbbbb", date: "2026-10-16" }]));
+      .mockResolvedValueOnce(
+        answer("Moved the dentist to Friday.", [{ op: "update", id: "bbbbbb", date: "2026-10-16" }]),
+      );
 
     const result = await runAssistant({ text: "move the dentist in March to Friday", history: [] });
 
-    expect(mocks.lookupTasks).toHaveBeenCalledWith({ query: "dentist", from: undefined, to: undefined }, expect.any(String), {
-      statuses,
-      priorities,
-    });
+    expect(mocks.lookupTasks).toHaveBeenCalledWith(
+      { query: "dentist", from: undefined, to: undefined },
+      expect.any(String),
+      {
+        statuses,
+        priorities,
+      },
+    );
     expect(mocks.chatJson).toHaveBeenCalledTimes(2);
     // The retry carries the results in its context and does NOT replay the first (placeholder) answer.
     const retry = mocks.chatJson.mock.calls[1][0].messages;
@@ -236,7 +269,9 @@ describe("runAssistant", () => {
 
   it("answers a month question in one call, with that month's tasks in the prompt", async () => {
     mocks.loadRanges.mockResolvedValueOnce({ text: "JUNE-TASKS", tasks: [] });
-    mocks.chatJson.mockResolvedValueOnce(answer("In June you had one task: Book dentist appointment on Wednesday the 3rd."));
+    mocks.chatJson.mockResolvedValueOnce(
+      answer("In June you had one task: Book dentist appointment on Wednesday the 3rd."),
+    );
 
     const result = await runAssistant({ text: "What did I do in June, 2026?", history: [] });
 

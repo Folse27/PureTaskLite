@@ -6,7 +6,8 @@ const limited = (message: string, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify({ error: { message, code: "rate_limit_exceeded" } }), { status: 429, headers });
 const completion = (content = '{"reply":"Hi."}', finish_reason = "stop") =>
   ok({ choices: [{ message: { role: "assistant", content }, finish_reason }] });
-const ask = (deadline?: number) => chatJson({ messages: [{ role: "user", content: "hi" }], schema: { type: "object" }, deadline });
+const ask = (deadline?: number) =>
+  chatJson({ messages: [{ role: "user", content: "hi" }], schema: { type: "object" }, deadline });
 
 const fetchMock = vi.fn();
 
@@ -51,9 +52,12 @@ describe("chatJson", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     fetchMock
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ error: { message: "response_format json_schema is not supported by this model" } }), {
-          status: 400,
-        }),
+        new Response(
+          JSON.stringify({ error: { message: "response_format json_schema is not supported by this model" } }),
+          {
+            status: 400,
+          },
+        ),
       )
       .mockResolvedValueOnce(completion());
     expect(await ask()).toEqual({ reply: "Hi." });
@@ -99,7 +103,11 @@ describe("transcribe language", () => {
 
   it("sends the vocabulary prompt and uses whisper-large-v3 by default", async () => {
     fetchMock.mockResolvedValueOnce(ok({ text: "Move the dentist appointment to Friday" }));
-    const text = await transcribe(new Blob(["x"], { type: "audio/mp4" }), "audio.mp4", "Tasks: Book dentist appointment.");
+    const text = await transcribe(
+      new Blob(["x"], { type: "audio/mp4" }),
+      "audio.mp4",
+      "Tasks: Book dentist appointment.",
+    );
     const form = fetchMock.mock.calls[0][1].body as FormData;
     expect(form.get("prompt")).toBe("Tasks: Book dentist appointment.");
     expect(form.get("model")).toBe("whisper-large-v3");

@@ -31,7 +31,12 @@ export function DragLayer() {
         ) : (
           <div
             className="absolute rounded-[10px] bg-accent-tint ring-2 ring-accent"
-            style={{ left: target.rect.left, top: target.rect.top, width: target.rect.width, height: target.rect.height }}
+            style={{
+              left: target.rect.left,
+              top: target.rect.top,
+              width: target.rect.width,
+              height: target.rect.height,
+            }}
           />
         ))}
 

@@ -3,18 +3,7 @@
 import { useRef, useState } from "react";
 import { usePlanner } from "@/client/planner-store";
 import type { LabelKind, Task } from "@/lib/types";
-import {
-  ArrowDown,
-  ArrowUp,
-  CalendarMove,
-  Check,
-  Ellipsis,
-  Flag,
-  Pencil,
-  SubItem,
-  TextAlign,
-  Trash,
-} from "../icons";
+import { ArrowDown, ArrowUp, CalendarMove, Check, Ellipsis, Flag, Pencil, SubItem, TextAlign, Trash } from "../icons";
 import { Alert, AlertButton } from "../ui/Modal";
 import { MenuItem, MenuSeparator, Popover } from "../ui/Popover";
 
@@ -171,7 +160,13 @@ export function LabelPill({ kind, task, disabled }: { kind: LabelKind; task: Tas
           <span>No status</span>
         )}
       </button>
-      <Popover open={open} anchorRef={ref} onClose={() => setOpen(false)} label={`Choose ${noun.toLowerCase()}`} width={220}>
+      <Popover
+        open={open}
+        anchorRef={ref}
+        onClose={() => setOpen(false)}
+        label={`Choose ${noun.toLowerCase()}`}
+        width={220}
+      >
         {labels.map((l) => (
           <MenuItem
             key={l.id}
@@ -187,7 +182,12 @@ export function LabelPill({ kind, task, disabled }: { kind: LabelKind; task: Tas
           </MenuItem>
         ))}
         {labels.length > 0 && <MenuSeparator />}
-        <MenuItem radio checked={!task[field]} onSelect={() => choose(null)} icon={<span className="size-2.5 rounded-full shadow-[inset_0_0_0_1.5px_var(--label-3)]" />}>
+        <MenuItem
+          radio
+          checked={!task[field]}
+          onSelect={() => choose(null)}
+          icon={<span className="size-2.5 rounded-full shadow-[inset_0_0_0_1.5px_var(--label-3)]" />}
+        >
           <span className="flex items-center justify-between gap-2">
             No {noun.toLowerCase()}
             {!task[field] && <Check size={16} className="text-accent" />}

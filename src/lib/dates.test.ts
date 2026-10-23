@@ -27,12 +27,7 @@ describe("weekLabel / dayLabel", () => {
 
 describe("weeksOfMonth", () => {
   it("lists every week whose Monday falls in the month", () => {
-    expect(weeksOfMonth(2026, 9)).toEqual([
-      "2026-10-05",
-      "2026-10-12",
-      "2026-10-19",
-      "2026-10-26",
-    ]);
+    expect(weeksOfMonth(2026, 9)).toEqual(["2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26"]);
   });
 
   it("includes a week that starts on the 1st", () => {

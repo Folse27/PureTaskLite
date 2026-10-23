@@ -17,7 +17,13 @@ export function FlashOverlay({ nodeKey }: { nodeKey: string }) {
  * children, so it's obvious at a glance which items belong to the same group.
  */
 export function GuideLine({ left }: { left: string }) {
-  return <span aria-hidden="true" className="pointer-events-none absolute bottom-2 top-0 z-[1] w-px bg-guide" style={{ left }} />;
+  return (
+    <span
+      aria-hidden="true"
+      className="pointer-events-none absolute bottom-2 top-0 z-[1] w-px bg-guide"
+      style={{ left }}
+    />
+  );
 }
 
 export function Chevron({ open, size = 16 }: { open: boolean; size?: number }) {

@@ -203,7 +203,9 @@ export async function chatJson(body: {
     const unsupported =
       error instanceof GroqError &&
       error.status === 502 &&
-      /response_format|json_schema|structured|strict|json_validate_failed|failed to (generate|validate) json/i.test(error.message);
+      /response_format|json_schema|structured|strict|json_validate_failed|failed to (generate|validate) json/i.test(
+        error.message,
+      );
     if (!unsupported) throw error;
     console.warn(`[groq] ${model} doesn't support strict structured outputs; using JSON mode instead.`);
     response = await send({ type: "json_object" });

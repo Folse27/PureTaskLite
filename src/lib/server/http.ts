@@ -71,10 +71,7 @@ export function route<C>(handler: Handler<C>, options: { public?: boolean } = {}
         return Response.json({ error: error.message, ...error.extra }, { status: error.status });
       }
       if (error instanceof ZodError) {
-        return Response.json(
-          { error: "Invalid input.", issues: z.flattenError(error) },
-          { status: 400 },
-        );
+        return Response.json({ error: "Invalid input.", issues: z.flattenError(error) }, { status: 400 });
       }
       if (error instanceof DepthLimitError) {
         return Response.json({ error: error.message }, { status: 400 });

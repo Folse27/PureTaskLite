@@ -1,11 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  formatWait,
-  lockoutDurationMs,
-  LoginRateLimiter,
-  MemoryRateLimitStore,
-  RATE_LIMIT,
-} from "./rate-limit";
+import { formatWait, lockoutDurationMs, LoginRateLimiter, MemoryRateLimitStore, RATE_LIMIT } from "./rate-limit";
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;

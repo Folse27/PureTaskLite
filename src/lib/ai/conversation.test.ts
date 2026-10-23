@@ -58,7 +58,7 @@ describe("systemPrompt", () => {
   it("includes labels, the JSON contract and the task list", () => {
     expect(prompt).toContain("Statuses (new tasks get the first one): To do, Done.");
     expect(prompt).toContain("ANSWER WITH ONE JSON OBJECT");
-    expect(prompt).toContain("Set \"status\" or \"priority\" only when the user mentions them.");
+    expect(prompt).toContain('Set "status" or "priority" only when the user mentions them.');
     expect(prompt.endsWith("TASK-LIST-HERE")).toBe(true);
     expect(prompt).toContain("Never write a reply that only announces information");
     expect(prompt).toContain("NEVER ask the user to confirm a deletion yourself");

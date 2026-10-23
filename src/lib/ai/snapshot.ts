@@ -104,10 +104,14 @@ export function renderSnapshot(input: SnapshotInput): string {
 
   if (input.outsideTotal > 0) {
     lines.push("", "Other dates, top-level tasks only (sub-notes not listed):");
-    lines.push(...renderTasksByDate(input.outside, today, input, (t) => (input.hasSubnotes.has(t.id) ? " (has sub-notes)" : "")));
+    lines.push(
+      ...renderTasksByDate(input.outside, today, input, (t) => (input.hasSubnotes.has(t.id) ? " (has sub-notes)" : "")),
+    );
     const missing = input.outsideTotal - input.outside.length;
     if (missing > 0) {
-      lines.push(`…and ${missing} more top-level task${missing === 1 ? "" : "s"} on other dates, not listed (use lookup).`);
+      lines.push(
+        `…and ${missing} more top-level task${missing === 1 ? "" : "s"} on other dates, not listed (use lookup).`,
+      );
     }
   }
   return lines.join("\n");

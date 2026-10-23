@@ -26,7 +26,11 @@ function score(v: SpeechSynthesisVoice): number {
   });
   if (/en[-_](US|GB)/i.test(v.lang)) s += 5;
   if (v.default) s += 1;
-  if (/compact|eloquence|novelty|bad news|bells|bubbles|cellos|whisper|zarvox|trinoids|albert|jester|organ|superstar|wobble/i.test(v.name)) {
+  if (
+    /compact|eloquence|novelty|bad news|bells|bubbles|cellos|whisper|zarvox|trinoids|albert|jester|organ|superstar|wobble/i.test(
+      v.name,
+    )
+  ) {
     s -= 200;
   }
   return s;

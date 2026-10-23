@@ -147,7 +147,9 @@ function WeekNode({ monday, ctx, divider }: { monday: string; ctx: Ctx; divider:
       guide="19.5px" // centre of the week chevron (12px padding + 16px icon)
       row={
         <>
-          {current && <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-accent" aria-hidden="true" />}
+          {current && (
+            <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-accent" aria-hidden="true" />
+          )}
           <Chevron open={expanded} />
           <span className={`tabular text-[15px] font-medium ${current ? "text-accent" : ""}`}>{label}</span>
           {current && (
@@ -193,9 +195,7 @@ function DayNode({ date, ctx }: { date: string; ctx: Ctx }) {
         <>
           <Chevron open={expanded} size={14} />
           <span
-            className={`tabular text-[15px] ${
-              isToday ? "font-semibold text-accent" : weekend ? "text-label-2" : ""
-            }`}
+            className={`tabular text-[15px] ${isToday ? "font-semibold text-accent" : weekend ? "text-label-2" : ""}`}
           >
             <span className="inline-block w-[3.1em] font-semibold tracking-[0.02em]">{weekday}</span>
             {ddmmyyyy}

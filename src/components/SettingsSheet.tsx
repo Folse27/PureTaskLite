@@ -71,7 +71,10 @@ function LabelEditor({ kind }: { kind: LabelKind }) {
     <div className="overflow-hidden rounded-xl bg-surface shadow-soft">
       <ul>
         {labels.map((label, i) => (
-          <li key={label.id} className={`flex items-center gap-1 pl-1.5 pr-1 ${i > 0 ? "border-t border-separator" : ""}`}>
+          <li
+            key={label.id}
+            className={`flex items-center gap-1 pl-1.5 pr-1 ${i > 0 ? "border-t border-separator" : ""}`}
+          >
             <ColorButton kind={kind} label={label} />
             <NameInput kind={kind} label={label} autoFocus={focusId === label.id} />
             <IconButton label={`Move ${label.name} up`} disabled={i === 0} onClick={() => move(i, -1)}>
@@ -182,7 +185,8 @@ function ColorButton({ kind, label }: { kind: LabelKind; label: Label }) {
   const ref = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const pick = (color: string) => {
-    if (color.toUpperCase() !== label.color.toUpperCase()) void updateLabel(kind, label.id, { color: color.toUpperCase() });
+    if (color.toUpperCase() !== label.color.toUpperCase())
+      void updateLabel(kind, label.id, { color: color.toUpperCase() });
   };
   return (
     <>
@@ -195,7 +199,10 @@ function ColorButton({ kind, label }: { kind: LabelKind; label: Label }) {
         aria-label={`Color of ${label.name}`}
         className="pressable flex size-11 shrink-0 items-center justify-center rounded-full hover:bg-fill"
       >
-        <span className="size-6 rounded-full shadow-[inset_0_0_0_1px_rgb(0_0_0/0.1)]" style={{ background: label.color }} />
+        <span
+          className="size-6 rounded-full shadow-[inset_0_0_0_1px_rgb(0_0_0/0.1)]"
+          style={{ background: label.color }}
+        />
       </button>
       <Popover open={open} anchorRef={ref} onClose={() => setOpen(false)} label={`Color of ${label.name}`} width={252}>
         <div className="grid grid-cols-5 gap-1 p-1">
@@ -217,7 +224,10 @@ function ColorButton({ kind, label }: { kind: LabelKind; label: Label }) {
                 }}
                 className="flex size-11 items-center justify-center rounded-full hover:bg-fill focus-visible:bg-fill"
               >
-                <span className="flex size-7 items-center justify-center rounded-full text-white" style={{ background: c.value }}>
+                <span
+                  className="flex size-7 items-center justify-center rounded-full text-white"
+                  style={{ background: c.value }}
+                >
                   {selected && <Check size={15} strokeWidth={2.6} />}
                 </span>
               </button>

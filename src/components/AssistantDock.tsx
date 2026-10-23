@@ -86,7 +86,9 @@ export function AssistantDock({ today }: { today: string }) {
             recording ? "bg-danger-fill" : "bg-accent-fill"
           }`}
         >
-          {recording && <span className="recording-pulse absolute inset-0 rounded-full bg-danger-fill" aria-hidden="true" />}
+          {recording && (
+            <span className="recording-pulse absolute inset-0 rounded-full bg-danger-fill" aria-hidden="true" />
+          )}
           {busy && (
             <span
               className="absolute inset-[-4px] animate-spin rounded-full border-[3px] border-transparent border-t-accent motion-reduce:animate-none"
@@ -198,11 +200,15 @@ function AssistantPanel({ today }: { today: string }) {
         </button>
       </header>
 
-      <div ref={scroller} className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 pb-3" aria-live="polite">
+      <div
+        ref={scroller}
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 pb-3"
+        aria-live="polite"
+      >
         {turns.length === 0 && !notice && phase === "idle" && (
           <p className="py-2 text-[14px] leading-relaxed text-label-2">
-            Tap the mic and say things like “Add buy milk tomorrow with high priority”, “What’s on this week?” or
-            “Move the dentist to next Friday”.
+            Tap the mic and say things like “Add buy milk tomorrow with high priority”, “What’s on this week?” or “Move
+            the dentist to next Friday”.
           </p>
         )}
         {turns.map((t, i) => (
@@ -210,12 +216,19 @@ function AssistantPanel({ today }: { today: string }) {
             key={t.id}
             turn={t}
             today={today}
-            onConfirm={i === turns.length - 1 && t.asksToConfirm && awaitingConfirm ? (yes) => void send(yes ? "Yes" : "No") : undefined}
+            onConfirm={
+              i === turns.length - 1 && t.asksToConfirm && awaitingConfirm
+                ? (yes) => void send(yes ? "Yes" : "No")
+                : undefined
+            }
           />
         ))}
         {status && (
           <p className="flex items-center gap-2 text-[14px] text-label-2">
-            <span className="size-1.5 animate-pulse rounded-full bg-accent motion-reduce:animate-none" aria-hidden="true" />
+            <span
+              className="size-1.5 animate-pulse rounded-full bg-accent motion-reduce:animate-none"
+              aria-hidden="true"
+            />
             {status}
           </p>
         )}

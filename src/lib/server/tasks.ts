@@ -194,7 +194,6 @@ async function siblingRows(tx: Transaction, date: string, parentId: string | nul
     .orderBy(asc(tasks.sortOrder), asc(tasks.createdAt));
 }
 
-
 /** Sorts a task's sibling group by priority, keeping the order among equal priorities. */
 export async function resortByPriorityTx(tx: Transaction, taskId: string): Promise<void> {
   const task = await getTask(taskId, tx);
@@ -203,7 +202,10 @@ export async function resortByPriorityTx(tx: Transaction, taskId: string): Promi
     siblingRows(tx, task.date, task.parentId),
     tx.select({ id: priorities.id }).from(priorities).orderBy(asc(priorities.sortOrder), asc(priorities.createdAt)),
   ]);
-  const order = priorityOrder(rows.map(toTask), labelRows.map((l) => l.id));
+  const order = priorityOrder(
+    rows.map(toTask),
+    labelRows.map((l) => l.id),
+  );
   await setSortOrders(tx, tasks, order);
 }
 

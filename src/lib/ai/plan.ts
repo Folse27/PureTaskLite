@@ -47,7 +47,10 @@ export const RESPONSE_JSON_SCHEMA = {
   required: ["reply", "operations", "lookup"],
 } as const;
 
-const optionalText = z.string().nullish().transform((v) => (v == null ? undefined : v.trim()));
+const optionalText = z
+  .string()
+  .nullish()
+  .transform((v) => (v == null ? undefined : v.trim()));
 
 const operationSchema = z.object({
   op: z.enum(["create", "update", "delete"]),
@@ -56,7 +59,10 @@ const operationSchema = z.object({
   parent: optionalText,
   date: optionalText,
   title: optionalText,
-  description: z.string().nullish().transform((v) => (v == null ? undefined : v.trim())),
+  description: z
+    .string()
+    .nullish()
+    .transform((v) => (v == null ? undefined : v.trim())),
   status: optionalText,
   priority: optionalText,
 });
@@ -242,7 +248,11 @@ export function planOperations(ops: Operation[], ctx: PlanContext): Plan {
     if (op.op !== "update") continue;
     const target = known(op.id);
     if (!target) {
-      problems.push(op.title ? `I couldn't find the task to rename to ${quote(op.title)}` : "I couldn't find one of the tasks to change");
+      problems.push(
+        op.title
+          ? `I couldn't find the task to rename to ${quote(op.title)}`
+          : "I couldn't find one of the tasks to change",
+      );
       continue;
     }
     const patch: TaskPatch = {};
@@ -294,7 +304,11 @@ const NO = /^(no|nope|nah|cancel|stop|don'?t|do not|never ?mind|wait|keep)\b/;
 
 /** Interprets the reply to "Should I delete …?" without calling the model. */
 export function classifyConfirmation(text: string): "yes" | "no" | "other" {
-  const t = text.toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, " ").replace(/\s+/g, " ").trim();
+  const t = text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}' ]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   const words = t.split(" ").length;
   if (NO.test(t) && words <= 8) return "no";
   if (YES.test(t) && words <= 8 && !/\b(not|don'?t|no)\b/.test(t)) return "yes";
@@ -351,7 +365,8 @@ export function composeReply(
     if (changes.length > 0) parts.push(`I ${summarize(changes)}.`);
     if (problems.length > 0) {
       const shown = problems.slice(0, 3);
-      const more = problems.length > 3 ? `, and ${problems.length - 3} more problem${problems.length === 4 ? "" : "s"}` : "";
+      const more =
+        problems.length > 3 ? `, and ${problems.length - 3} more problem${problems.length === 4 ? "" : "s"}` : "";
       const text = `${shown.join("; ")}${more}`;
       parts.push(changes.length > 0 ? `But ${text}.` : `${text[0].toUpperCase()}${text.slice(1)}.`);
     }
@@ -364,7 +379,8 @@ export function composeReply(
 /** Short record of what happened, appended to the assistant turn in the history (handles keep follow-ups working). */
 export function historyNote(changes: AssistantChange[], pending: PendingDelete | null, handle: (id: string) => string) {
   const items = changes.map(
-    (c) => `${VERB[c.kind]} ${handle(c.taskId)} ${JSON.stringify(c.title)}${c.kind === "deleted" ? "" : ` on ${c.date}`}`,
+    (c) =>
+      `${VERB[c.kind]} ${handle(c.taskId)} ${JSON.stringify(c.title)}${c.kind === "deleted" ? "" : ` on ${c.date}`}`,
   );
   if (pending) items.push(`waiting for confirmation to delete ${pending.ids.map(handle).join(", ")}`);
   return items.length ? `\n[${items.join("; ")}]` : "";

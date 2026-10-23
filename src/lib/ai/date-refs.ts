@@ -44,7 +44,8 @@ const ABBREVIATIONS: Record<string, number> = {
 };
 /** Month names that are also everyday words; only count them with a clear date context. */
 const AMBIGUOUS = new Set(["may", "march"]);
-const DATE_CONTEXT_BEFORE = /\b(in|on|of|during|from|until|till|through|since|for|by|before|after|last|next|this|early|mid|late|end of|start of|beginning of|\d{1,2}(st|nd|rd|th)?)\s*$/;
+const DATE_CONTEXT_BEFORE =
+  /\b(in|on|of|during|from|until|till|through|since|for|by|before|after|last|next|this|early|mid|late|end of|start of|beginning of|\d{1,2}(st|nd|rd|th)?)\s*$/;
 
 function monthRange(year: number, monthIndex: number): DateRange {
   const start = new Date(year, monthIndex, 1);

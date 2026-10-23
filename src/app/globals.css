@@ -33,8 +33,9 @@
   --shadow-lg: 0 12px 40px rgb(0 0 0 / 0.16), 0 2px 8px rgb(0 0 0 / 0.08);
   /* Tree indentation step: tighter on phones so deep sub-notes keep room for text. */
   --tree-indent: 18px;
-  --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI",
-    system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-system:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, Roboto,
+    "Helvetica Neue", Arial, sans-serif;
 }
 
 @media (min-width: 640px) {
@@ -134,7 +135,9 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
-  transition: background-color 250ms ease, color 250ms ease;
+  transition:
+    background-color 250ms ease,
+    color 250ms ease;
 }
 
 /* While a task is being dragged. */
@@ -179,7 +182,10 @@ html.dragging-task * {
 
 /* Press feedback on pointer-down. */
 .pressable {
-  transition: transform 120ms ease-out, background-color 120ms ease-out, opacity 120ms ease-out;
+  transition:
+    transform 120ms ease-out,
+    background-color 120ms ease-out,
+    opacity 120ms ease-out;
 }
 .pressable:active {
   transform: scale(0.97);

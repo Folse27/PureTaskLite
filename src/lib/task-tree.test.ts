@@ -68,10 +68,9 @@ describe("priorityOrder / resortByPriority", () => {
   });
 
   it("treats a deleted/unknown priority like none", () => {
-    expect(priorityOrder([make("x", null, 0, { priorityId: "gone" }), make("y", null, 1, { priorityId: "low" })], P)).toEqual([
-      "y",
-      "x",
-    ]);
+    expect(
+      priorityOrder([make("x", null, 0, { priorityId: "gone" }), make("y", null, 1, { priorityId: "low" })], P),
+    ).toEqual(["y", "x"]);
   });
 
   it("only re-sorts the changed task's own sibling group", () => {
@@ -108,7 +107,11 @@ describe("moving tasks", () => {
 
   it("reorders within the same group", () => {
     const after = applyMove(tree(), "B", { parentId: null, date: "2026-10-12", index: 0 });
-    expect(childrenOf(after, null).filter((t) => t.date === "2026-10-12").map((t) => t.id)).toEqual(["B", "A"]);
+    expect(
+      childrenOf(after, null)
+        .filter((t) => t.date === "2026-10-12")
+        .map((t) => t.id),
+    ).toEqual(["B", "A"]);
   });
 
   it("moves a subtree under another parent on another day, rebasing depth and date", () => {

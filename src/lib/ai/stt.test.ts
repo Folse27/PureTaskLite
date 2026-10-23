@@ -26,7 +26,11 @@ describe("silence filtering", () => {
 });
 
 describe("prompt echo", () => {
-  const prompt = buildWhisperPrompt({ statuses: ["To do"], priorities: ["High"], titles: ["Book dentist appointment"] });
+  const prompt = buildWhisperPrompt({
+    statuses: ["To do"],
+    priorities: ["High"],
+    titles: ["Book dentist appointment"],
+  });
 
   it("treats a transcript that just repeats the prompt as silence", () => {
     expect(isPromptEcho("Add a sub-note, move it to next Friday.", prompt)).toBe(true);

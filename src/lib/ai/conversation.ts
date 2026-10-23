@@ -20,8 +20,9 @@ const historySchema = z
   .default([])
   .transform((messages) =>
     messages
-      .filter((m): m is { role: "user" | "assistant"; content: string } =>
-        (m.role === "user" || m.role === "assistant") && !!m.content?.trim(),
+      .filter(
+        (m): m is { role: "user" | "assistant"; content: string } =>
+          (m.role === "user" || m.role === "assistant") && !!m.content?.trim(),
       )
       .map((m) => ({ role: m.role, content: m.content })),
   );

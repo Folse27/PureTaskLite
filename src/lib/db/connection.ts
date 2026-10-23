@@ -7,9 +7,7 @@ import postgres from "postgres";
 export function databaseUrl(): string {
   const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
   if (!url) {
-    throw new Error(
-      "DATABASE_URL is not set. Use the Supabase *transaction pooler* connection string (port 6543).",
-    );
+    throw new Error("DATABASE_URL is not set. Use the Supabase *transaction pooler* connection string (port 6543).");
   }
   return url;
 }
