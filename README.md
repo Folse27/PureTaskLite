@@ -1,26 +1,94 @@
 # PureTask Lite
 
-A personal day planner — a simplified ClickUp for one person. A calendar tree
-(Years → Months → Weeks → Days) holds tasks with nested sub-notes, custom
-statuses and priorities, and a voice assistant that can read and change your
-plan.
+A personal day planner with a voice AI assistant. Tasks live in a calendar
+tree (Years → Months → Weeks → Days) with nested sub-notes, coloured
+statuses and priorities, and drag and drop. Instead of typing, you can tap the
+microphone and say *"Add gym on Monday and Wednesday, high priority"*: the
+assistant changes the plan and answers out loud.
 
-- **Stack:** Next.js 16 (App Router) · TypeScript · Tailwind CSS 4 · Drizzle ORM ·
-  Postgres on Supabase · Groq (speech-to-text + chat with structured JSON output) · Motion
-- **Hosting:** Vercel (from a private GitHub repo)
-- **Access:** single password, signed session cookie, Postgres-backed login rate limiting
+I built it as my own daily tool, and this repository is public as a portfolio
+piece. It is a single-user app behind a password; there is no public demo.
 
 ---
 
+## Highlights
+
+- **Voice assistant that changes real data safely.** One request makes one
+  AI call, which returns a spoken reply plus a table of operations (create,
+  update, delete). The server checks every operation and saves them all in
+  one database transaction, so a request is applied completely or not at
+  all. Deleting a task that has sub-notes always waits for your confirmation.
+- **Planner that feels native on phone and desktop.**
+  - Spring-animated, lazily rendered calendar tree with guide lines.
+  - Sub-notes up to three levels deep, inline rename (double-click or
+    double-tap), and status/priority pickers.
+  - Drag and drop anywhere: mouse grip, or long-press on touch.
+  - Priority sorting, light/dark theme and reduced-motion support.
+- **Built for a public URL.**
+  - Password login with a signed, HTTP-only session cookie.
+  - Login rate limiting stored in Postgres, with exponential lockout.
+  - Row Level Security on every table, and all secrets server-side only.
+- **Tested.** TypeScript strict mode, input validation on every API route,
+  and 138 unit tests covering calendar math, the rate limiter, the AI plan
+  validation, drag-and-drop moves and more.
+
+## How the voice assistant works
+
+1. **Record.** The browser records your request (up to 2 minutes).
+2. **Transcribe.** Whisper on Groq turns it into text. It gets a short
+   vocabulary hint (your status names and current task titles) so names are
+   spelled right.
+3. **Build the context.** The server adds today's date, the last 20
+   messages, and a compact list of your tasks. The list always holds last,
+   this and next week in full; months you mention, like "June", are added
+   automatically.
+4. **One AI call.** `gpt-oss-120b` on Groq answers in a fixed JSON shape
+   (strict structured output): `reply`, `operations`, and an optional
+   `lookup` for tasks it can't see, the only case that needs a second call.
+5. **Validate.** Dates, task references, label names and the depth limit
+   are checked. Anything invalid is dropped and reported in the reply.
+6. **Save.** Everything goes into one transaction.
+7. **Reply.** The answer is shown, read aloud by the browser's speech
+   synthesis, and the calendar refreshes.
+
+## Tech stack
+
+| Area | Choice |
+| --- | --- |
+| App | Next.js 16 (App Router), React 19, TypeScript |
+| UI | Tailwind CSS 4, Motion (spring animations), zustand |
+| Data | Postgres (Supabase), Drizzle ORM and migrations, postgres-js |
+| AI | Groq: Whisper large-v3 (speech-to-text), gpt-oss-120b (structured JSON) |
+| Speech output | Browser `speechSynthesis` (free, on-device) |
+| Validation and tests | zod, Vitest |
+| Hosting | Vercel, with a daily cron job |
+
+## Engineering decisions
+
+- **One structured AI call instead of a tool-calling loop.** An earlier
+  version let the model call tools step by step. On Groq's free tier
+  (about 8K tokens per minute) a multi-task request ran out of budget
+  midway. One JSON answer with temporary references (a sub-note can point to
+  a parent created in the same answer) needs roughly a third of the tokens,
+  and makes all-or-nothing saving possible.
+- **Confirmation is enforced by the server, not the model.** Held deletes are
+  confirmed by your next "yes" or "no" without calling the AI again.
+- **Serverless-friendly database access.** The app connects through
+  Supabase's transaction pooler with `prepare: false`. The browser never
+  talks to the database directly.
+- **Defence in depth.** The Next.js proxy (formerly called "middleware")
+  checks every request, and each route handler verifies the session again.
+
 ## Contents
 
-1. [Deploy to Vercel (step by step)](#deploy-to-vercel-step-by-step)
+1. [Deploy your own copy](#deploy-to-vercel-step-by-step)
 2. [Run it locally](#run-it-locally)
 3. [Environment variables](#environment-variables)
 4. [Scripts](#scripts)
 5. [Using the app](#using-the-app)
 6. [How it works](#how-it-works)
 7. [Troubleshooting](#troubleshooting)
+8. [License](#license)
 
 ---
 
@@ -29,20 +97,15 @@ plan.
 You need free accounts on **GitHub**, **Vercel** and **Groq**. Supabase is
 created for you through Vercel. Allow about 15 minutes.
 
-### 1. Create the private GitHub repo and push
+### 1. Get your own copy of the code
 
-With the GitHub CLI (`gh auth login` first if you haven't):
-
-```bash
-gh repo create puretasklite --private --source=. --remote=origin --push
-```
-
-Or in the browser: **github.com → New repository**, name it, choose
-**Private**, don't add a README/.gitignore/license, then:
+**Fork** this repository on GitHub (top right). Or clone it and push it to a
+new repository of your own:
 
 ```bash
-git remote add origin https://github.com/<your-user>/puretasklite.git
-git push -u origin main
+git clone https://github.com/Folse27/PureTaskLite.git
+cd PureTaskLite
+gh repo create my-planner --private --source=. --remote=origin --push
 ```
 
 ### 2. Prepare your secrets
@@ -64,7 +127,7 @@ git push -u origin main
 ### 4. Import the repo into Vercel
 
 1. Go to **[vercel.com/new](https://vercel.com/new)** → **Import Git Repository**.
-   If your private repo isn't listed, click **Adjust GitHub App Permissions**
+   If your repository isn't listed, click **Adjust GitHub App Permissions**
    and grant access to it.
 2. Framework preset: **Next.js** (detected automatically). Leave build and
    output settings as they are — Vercel automatically runs the `vercel-build`
@@ -340,7 +403,7 @@ src/
     auth/                  Session tokens, password check, rate-limit policy
     db/                    Drizzle schema (RLS enabled) and postgres-js client
     server/                Task/label services and HTTP helpers
-    ai/                    Groq client, assistant tool loop, tool implementations
+    ai/                    Groq client, task list for the model, JSON plan validation, saving
 drizzle/                   SQL migrations
 scripts/migrate.ts         Migration runner (works through the transaction pooler)
 ```
@@ -432,7 +495,8 @@ don't share memory.
 - The Groq free tier allows about 8,000 tokens per minute for the chat model
   (see **console.groq.com → Settings → Limits**). A request uses one model call
   of roughly 2–4K tokens, so a few requests per minute fit.
-- The server already waits and retries automatically (up to about 25 s).
+- The server already waits and retries automatically, within a 50-second time
+  budget per request.
   Nothing is half-saved: changes are applied all at once, or not at all.
 - The Vercel function logs show Groq's exact message (`[groq] Rate limited …`),
   including which limit was hit.
@@ -461,3 +525,10 @@ don't share memory.
 **Changed `APP_PASSWORD` but old sessions still work**
 - Sessions are signed with `SESSION_SECRET`, not the password. Change
   `SESSION_SECRET` to sign out every device.
+
+---
+
+## License
+
+[MIT](LICENSE): you may use, change and share this code, including
+commercially, as long as the copyright notice is kept.
