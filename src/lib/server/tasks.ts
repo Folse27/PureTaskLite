@@ -6,6 +6,7 @@ import { getDb, schema, type Transaction } from "@/lib/db";
 import type { Task, TaskPatch } from "@/lib/types";
 import { HttpError, notFound } from "./http";
 import { ensureSeeded } from "./labels";
+import { setSortOrders } from "./sort-order";
 
 const { tasks, statuses, priorities } = schema;
 
@@ -193,13 +194,6 @@ async function siblingRows(tx: Transaction, date: string, parentId: string | nul
     .orderBy(asc(tasks.sortOrder), asc(tasks.createdAt));
 }
 
-/** Writes sort orders 0…n for the given ids, touching only rows that change. */
-async function writeOrder(tx: Transaction, rows: { id: string; sortOrder: number }[], orderedIds: string[]) {
-  const current = new Map(rows.map((r) => [r.id, r.sortOrder]));
-  for (const [index, id] of orderedIds.entries()) {
-    if (current.get(id) !== index) await tx.update(tasks).set({ sortOrder: index }).where(eq(tasks.id, id));
-  }
-}
 
 /** Sorts a task's sibling group by priority, keeping the order among equal priorities. */
 export async function resortByPriorityTx(tx: Transaction, taskId: string): Promise<void> {
@@ -210,7 +204,7 @@ export async function resortByPriorityTx(tx: Transaction, taskId: string): Promi
     tx.select({ id: priorities.id }).from(priorities).orderBy(asc(priorities.sortOrder), asc(priorities.createdAt)),
   ]);
   const order = priorityOrder(rows.map(toTask), labelRows.map((l) => l.id));
-  await writeOrder(tx, rows, order);
+  await setSortOrders(tx, tasks, order);
 }
 
 export async function moveTask(id: string, to: MoveTarget): Promise<Task> {
@@ -255,7 +249,7 @@ export async function moveTaskTx(tx: Transaction, id: string, to: MoveTarget): P
   const rows = (await siblingRows(tx, date, to.parentId)).filter((r) => r.id !== id);
   const order = rows.map((r) => r.id);
   order.splice(Math.max(0, Math.min(to.index, order.length)), 0, id);
-  await writeOrder(tx, [...rows, { id, sortOrder: -1 }], order);
+  await setSortOrders(tx, tasks, order);
   return toTask((await getTask(id, tx))!);
 }
 
@@ -282,8 +276,6 @@ export async function reorderTasks(date: string, parentId: string | null, ordere
     if (orderedIds.length !== siblingIds.size || !orderedIds.every((i) => siblingIds.has(i))) {
       throw new HttpError(409, "The list changed in the meantime. Please reload.");
     }
-    for (const [index, taskId] of orderedIds.entries()) {
-      await tx.update(tasks).set({ sortOrder: index }).where(eq(tasks.id, taskId));
-    }
+    await setSortOrders(tx, tasks, orderedIds);
   });
 }

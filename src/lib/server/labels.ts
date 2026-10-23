@@ -4,6 +4,7 @@ import { DEFAULT_PRIORITIES, DEFAULT_STATUSES } from "@/lib/colors";
 import { getDb, schema } from "@/lib/db";
 import type { Label, LabelKind } from "@/lib/types";
 import { HttpError, notFound } from "./http";
+import { setSortOrders } from "./sort-order";
 
 const { statuses, priorities, tasks, appMeta } = schema;
 
@@ -78,9 +79,7 @@ export async function reorderLabels(kind: LabelKind, orderedIds: string[]): Prom
     if (orderedIds.length !== known.size || !orderedIds.every((i) => known.has(i))) {
       throw new HttpError(409, "The list changed in the meantime. Please reload.");
     }
-    for (const [index, labelId] of orderedIds.entries()) {
-      await tx.update(table).set({ sortOrder: index }).where(eq(table.id, labelId));
-    }
+    await setSortOrders(tx, table, orderedIds);
   });
 }
 
