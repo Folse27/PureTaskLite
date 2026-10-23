@@ -1,5 +1,7 @@
 # PureTask Lite
 
+[![CI](https://github.com/Folse27/PureTaskLite/actions/workflows/ci.yml/badge.svg)](https://github.com/Folse27/PureTaskLite/actions/workflows/ci.yml)
+
 A personal day planner with a voice AI assistant. Tasks live in a calendar
 tree (Years → Months → Weeks → Days) with nested sub-notes, coloured
 statuses and priorities, and drag and drop. Instead of typing, you can tap the
@@ -8,6 +10,24 @@ assistant changes the plan and answers out loud.
 
 I built it as my own daily tool, and this repository is public as a portfolio
 piece. It is a single-user app behind a password; there is no public demo.
+
+## Screenshots
+
+All screenshots use made-up demo data on a local test database.
+
+![Desktop, dark theme: the calendar tree with tasks, sub-notes, statuses and priorities](docs/screenshots/desktop-dark.png)
+
+![Dragging a task from Friday to Saturday on desktop](docs/screenshots/drag-to-another-day.gif)
+
+<p>
+  <img src="docs/screenshots/phone-assistant.png" width="300" alt="Phone, light theme: a conversation with the voice assistant">
+  &nbsp;
+  <img src="docs/screenshots/phone-drag.png" width="300" alt="Phone, light theme: long-press drag of a task onto another day">
+</p>
+
+*Left: an example assistant conversation (the AI replies in this capture
+were mocked, so no real API calls were made). Right: long-press drag on a
+phone.*
 
 ---
 
@@ -78,6 +98,14 @@ piece. It is a single-user app behind a password; there is no public demo.
   talks to the database directly.
 - **Defence in depth.** The Next.js proxy (formerly called "middleware")
   checks every request, and each route handler verifies the session again.
+- **Small custom drag and drop instead of a library.** Drop targets are tree
+  rows that render lazily and animate open, and the same gesture has to work
+  with a mouse grip and a long-press on touch while the page auto-scrolls.
+  Under 300 lines of pointer handling with hit-testing on `data-drop` rows
+  was simpler than adapting a sortable-list library to a recursive tree.
+- **Reordering in one statement.** Saving a new sibling order is a single
+  `UPDATE … FROM (VALUES …)` that only touches rows whose position changed,
+  not one query per row.
 
 ## Contents
 
@@ -281,7 +309,7 @@ test voice on a phone, use the deployed site.
 Before committing, run everything CI-style:
 
 ```bash
-npm run check   # lint + typecheck + unit tests
+npm run check   # lint + format check + typecheck + unit tests
 ```
 
 ---
@@ -317,7 +345,8 @@ server logs say so — see [Troubleshooting](#troubleshooting).
 | `npm run db:generate` | Create a new migration after changing `src/lib/db/schema.ts` |
 | `npm run db:studio` | Browse the database with Drizzle Studio |
 | `npm run lint` · `npm run typecheck` · `npm test` | Quality checks |
-| `npm run check` | All three of the above |
+| `npm run format` / `npm run format:check` | Format with Prettier / check formatting |
+| `npm run check` | Lint, format check, typecheck and tests (what CI runs, plus a build) |
 
 ---
 
