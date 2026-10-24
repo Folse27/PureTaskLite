@@ -9,6 +9,13 @@ updates:
       # One PR for all minor/patch updates; majors arrive separately.
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # Node types should match the Node version the app runs on, not the newest.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
+      # TypeScript 7 is not yet supported by the lint tooling.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
   - package-ecosystem: github-actions
     directory: /
     schedule:
